@@ -5,6 +5,7 @@ import { initCommands, showCommands } from './commands.js'
 import { t, formatRelativeTime } from './i18n.js'
 import { initSettings, showSettings } from './settings.js'
 import { saveMessage, saveMessages, getLocalMessages, clearSessionMessages, isStorageAvailable, saveSessionInfo } from './message-db.js'
+import { addTtsButton, getTtsAuto } from './tts.js'
 
 const STORAGE_SESSION_KEY = 'clawapp-session-key'
 
@@ -304,6 +305,12 @@ function handleChatEvent(payload) {
     if (_currentAiText) {
       saveMessage({ id: payload.runId || uuid(), sessionKey: _sessionKey, role: 'assistant', content: _currentAiText, timestamp: Date.now() })
     }
+    // 添加 TTS 播放按钮，并在开启自动播报时触发
+    if (wrapper && _currentAiText) {
+      const ttsText = _currentAiText
+      const ttsBtn = addTtsButton(wrapper, ttsText)
+      if (getTtsAuto()) ttsBtn.click()
+    }
     resetStreamState()
     processMessageQueue()
     return
@@ -528,6 +535,7 @@ function appendAiMessage(text, msgTime, images) {
   
   wrapper.appendChild(bubble)
   wrapper.appendChild(time)
+  if (text) addTtsButton(wrapper, text)
   _messagesEl.insertBefore(wrapper, _typingEl)
   scrollToBottom()
 }

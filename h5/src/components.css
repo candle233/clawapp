@@ -661,6 +661,72 @@
   color: #fff;
 }
 
+/* TTS 语音播放按钮 */
+.tts-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.tts-btn:active {
+  background: rgba(255,255,255,0.08);
+}
+
+.tts-btn--loading {
+  color: var(--warning);
+  pointer-events: none;
+}
+
+.tts-btn--playing {
+  color: var(--accent);
+  background: rgba(233, 69, 96, 0.12);
+}
+
+.tts-btn--failed {
+  color: var(--danger);
+}
+
+@keyframes tts-spin {
+  to { transform: rotate(360deg); }
+}
+
+.tts-spin {
+  animation: tts-spin 0.9s linear infinite;
+}
+
+/* TTS 错误 toast */
+.tts-toast {
+  position: fixed;
+  bottom: calc(80px + var(--safe-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 18px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  z-index: 300;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  white-space: nowrap;
+  animation: tts-toast-in 0.25s ease;
+}
+
+@keyframes tts-toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
 /* 滚动到底部按钮 */
 .scroll-bottom-btn {
   position: absolute;

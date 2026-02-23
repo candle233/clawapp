@@ -4,6 +4,7 @@
 
 import { getTheme, setTheme } from './theme.js'
 import { getLang, setLang, t, onLangChange } from './i18n.js'
+import { getTtsAuto, setTtsAuto } from './tts.js'
 
 let _onDisconnect = null
 
@@ -58,6 +59,18 @@ export function showSettings() {
         </div>
       </div>
 
+      <div class="settings-section">
+        <div class="settings-label">${t('tts.auto')}</div>
+        <div class="settings-toggle-group" id="tts-auto-toggle">
+          <button class="settings-toggle ${getTtsAuto() ? '' : 'active'}" data-value="off">
+            🔇 ${t('tts.auto.off')}
+          </button>
+          <button class="settings-toggle ${getTtsAuto() ? 'active' : ''}" data-value="on">
+            🔊 ${t('tts.auto.on')}
+          </button>
+        </div>
+      </div>
+
       <div class="settings-section" style="margin-top:16px">
         <button class="settings-disconnect-btn" id="settings-disconnect">
           ${t('settings.disconnect')}
@@ -88,6 +101,16 @@ export function showSettings() {
       // 语言切换后重建面板
       closeSettings()
       showSettings()
+    }
+  })
+
+  // TTS 自动播报切换
+  panel.querySelectorAll('#tts-auto-toggle .settings-toggle').forEach(btn => {
+    btn.onclick = () => {
+      const value = btn.dataset.value === 'on'
+      setTtsAuto(value)
+      panel.querySelectorAll('#tts-auto-toggle .settings-toggle').forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
     }
   })
 

@@ -5,6 +5,7 @@
 import { getTheme, setTheme } from './theme.js'
 import { getLang, setLang, t, onLangChange } from './i18n.js'
 import { getTtsAuto, setTtsAuto } from './tts.js'
+import { renderDndSection } from './broadcast-center.js'
 
 let _onDisconnect = null
 
@@ -71,6 +72,10 @@ export function showSettings() {
         </div>
       </div>
 
+      <div class="settings-section">
+        <div id="dnd-section"></div>
+      </div>
+
       <div class="settings-section" style="margin-top:16px">
         <button class="settings-disconnect-btn" id="settings-disconnect">
           ${t('settings.disconnect')}
@@ -113,6 +118,9 @@ export function showSettings() {
       btn.classList.add('active')
     }
   })
+
+  // DND 免打扰设置
+  renderDndSection(panel.querySelector('#dnd-section'))
 
   // 断开连接
   panel.querySelector('#settings-disconnect').onclick = () => {

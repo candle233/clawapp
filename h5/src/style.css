@@ -292,6 +292,7 @@ html, body {
   justify-content: center;
   border-radius: 50%;
   transition: background 0.2s;
+  position: relative;
 }
 
 .chat-header .settings-btn:active {

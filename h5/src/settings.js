@@ -6,6 +6,7 @@ import { getTheme, setTheme } from './theme.js'
 import { getLang, setLang, t, onLangChange } from './i18n.js'
 import { getTtsAuto, setTtsAuto } from './tts.js'
 import { renderDndSection } from './broadcast-center.js'
+import { isSpeechSupported, getVoiceAutoSend, setVoiceAutoSend } from './voice-input.js'
 
 let _onDisconnect = null
 
@@ -76,6 +77,20 @@ export function showSettings() {
         <div id="dnd-section"></div>
       </div>
 
+      ${isSpeechSupported() ? `
+      <div class="settings-section">
+        <div class="settings-label">${t('voice.auto.send')}</div>
+        <div class="settings-toggle-group" id="voice-auto-toggle">
+          <button class="settings-toggle ${getVoiceAutoSend() ? '' : 'active'}" data-value="off">
+            ✉️ ${t('voice.auto.send.off')}
+          </button>
+          <button class="settings-toggle ${getVoiceAutoSend() ? 'active' : ''}" data-value="on">
+            🚀 ${t('voice.auto.send.on')}
+          </button>
+        </div>
+      </div>
+      ` : ''}
+
       <div class="settings-section" style="margin-top:16px">
         <button class="settings-disconnect-btn" id="settings-disconnect">
           ${t('settings.disconnect')}
@@ -121,6 +136,18 @@ export function showSettings() {
 
   // DND 免打扰设置
   renderDndSection(panel.querySelector('#dnd-section'))
+
+  // 语音自动发送
+  if (isSpeechSupported()) {
+    panel.querySelectorAll('#voice-auto-toggle .settings-toggle').forEach(btn => {
+      btn.onclick = () => {
+        const value = btn.dataset.value === 'on'
+        setVoiceAutoSend(value)
+        panel.querySelectorAll('#voice-auto-toggle .settings-toggle').forEach(b => b.classList.remove('active'))
+        btn.classList.add('active')
+      }
+    })
+  }
 
   // 断开连接
   panel.querySelector('#settings-disconnect').onclick = () => {

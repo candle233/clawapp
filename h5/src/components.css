@@ -727,6 +727,21 @@
   to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
+/* 语音输入按钮 */
+.voice-btn--listening {
+  color: var(--accent) !important;
+  animation: voice-pulse 1.2s ease-in-out infinite;
+}
+
+.voice-btn--error {
+  color: var(--danger) !important;
+}
+
+@keyframes voice-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.5); }
+  50%       { box-shadow: 0 0 0 6px rgba(var(--accent-rgb), 0); }
+}
+
 /* 播报中心 */
 .broadcast-panel {
   position: fixed;

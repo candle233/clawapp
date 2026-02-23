@@ -153,6 +153,8 @@ npm start
    - **Token**：`.env` 里设置的 `PROXY_TOKEN`
 4. 点击连接即可使用
 
+> 📖 **详细打包说明**（如何触发构建、本地手动打包、Release 签名、多种安装方法）请参阅 [docs/build-apk-guide.md](docs/build-apk-guide.md)
+
 ---
 
 <h2 id="deploy">部署方式</h2>

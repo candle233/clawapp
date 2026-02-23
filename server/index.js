@@ -2,9 +2,8 @@
  * ClawApp WebSocket 代理服务端
  * 
  * 功能：
- * - 接收来自 H5 客户端的 WebSocket 连接
+ * - 接收来自 APK 客户端的 WebSocket 连接
  * - 将消息透明转发到 OpenClaw Gateway
- * - 提供 H5 静态文件服务
  * - 支持 token 认证
  */
 
@@ -31,7 +30,6 @@ const CONFIG = {
   ingestToken: process.env.INGEST_TOKEN || '',
   gatewayUrl: process.env.OPENCLAW_GATEWAY_URL || 'ws://127.0.0.1:18789',
   gatewayToken: process.env.OPENCLAW_GATEWAY_TOKEN || '',
-  h5DistPath: join(__dirname, '../h5/dist'),
 };
 
 // Ed25519 设备密钥（OpenClaw 2.15+ device 认证）
@@ -190,18 +188,6 @@ app.post('/ingest/cron', (req, res) => {
   injectToGateway(injectText, body.sessionKey || null);
 
   res.json({ ok: true, delivered: count });
-});
-
-// 静态文件服务（H5 构建产物）
-app.use(express.static(CONFIG.h5DistPath));
-
-// 所有其他路由返回 index.html（SPA 支持）
-app.get('*', (req, res) => {
-  res.sendFile(join(CONFIG.h5DistPath, 'index.html'), (err) => {
-    if (err) {
-      res.status(404).send('Not Found');
-    }
-  });
 });
 
 // HTTP 服务器
@@ -544,7 +530,6 @@ server.listen(CONFIG.port, '0.0.0.0', () => {
   log.info(`- 监听地址: 0.0.0.0:${CONFIG.port}`);
   log.info(`- WebSocket 路径: /ws?token=xxx`);
   log.info(`- Gateway 地址: ${CONFIG.gatewayUrl}`);
-  log.info(`- H5 静态目录: ${CONFIG.h5DistPath}`);
   log.info(`- 健康检查: http://localhost:${CONFIG.port}/health`);
   log.info(`- Cron 入口: POST http://localhost:${CONFIG.port}/ingest/cron (X-Ingest-Token)`);
   log.info(`- Device ID: ${deviceKey.deviceId.substring(0, 16)}...`);

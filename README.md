@@ -1,7 +1,7 @@
 # ClawApp
 
 <p align="center">
-  <strong>📱 用手机浏览器和你的 OpenClaw AI 智能体聊天</strong>
+  <strong>📱 用手机 App 和你的 OpenClaw AI 智能体聊天</strong>
 </p>
 
 <p align="center">
@@ -33,14 +33,16 @@
 ClawApp 解决了这个问题：
 
 ```
-手机浏览器（任意网络）
+ClawApp Android APK（任意网络）
     ↓ WebSocket (WS / WSS)
-代理服务端（ClawApp Server，端口 3210，离线缓存）
+代理服务端（ClawApp Server，端口 3210）
     ↓ WebSocket + Ed25519 设备签名
 OpenClaw Gateway（端口 18789）
 ```
 
-代理服务端自动完成 Ed25519 设备签名握手认证（兼容 OpenClaw 2.13+），同时提供 H5 聊天页面，打开就能用，不需要装 App。
+代理服务端自动完成 Ed25519 设备签名握手认证（兼容 OpenClaw 2.13+）。安装 APK 后在设置页填入服务器地址和 Token 即可使用。
+
+> ⚠️ **注意**：Web 浏览器访问模式已移除。请通过 GitHub Actions 自动构建的 APK 在手机上使用 ClawApp。
 
 ---
 
@@ -86,27 +88,29 @@ OpenClaw Gateway（端口 18789）
 
 <h2 id="quickstart">快速开始</h2>
 
-### 一键部署（Mac / Linux）
+### 第一步：部署代理服务端
+
+#### 一键部署（Mac / Linux）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/qingchencloud/clawapp/main/install.sh | bash
 ```
 
-### 一键部署（Windows PowerShell）
+#### 一键部署（Windows PowerShell）
 
 ```powershell
 irm https://raw.githubusercontent.com/qingchencloud/clawapp/main/install.ps1 | iex
 ```
 
-脚本会自动检测环境、克隆仓库、安装依赖、构建前端、交互式配置 Token，并支持 PM2 常驻运行。如果本地已安装 OpenClaw，会自动读取 Gateway Token。
+脚本会自动检测环境、克隆仓库、安装依赖、交互式配置 Token，并支持 PM2 常驻运行。如果本地已安装 OpenClaw，会自动读取 Gateway Token。
 
-### 前提条件
+#### 前提条件
 
 - 电脑上已运行 [OpenClaw](https://github.com/openclaw/openclaw) Gateway（默认端口 18789）
   - 推荐使用 [中文汉化版](https://github.com/1186258278/OpenClawChineseTranslation)
 - 安装了 [Node.js](https://nodejs.org/) 18+ 或 [Docker](https://www.docker.com/)
 
-### 方式一：Docker 部署（推荐）
+#### Docker 部署（推荐）
 
 ```bash
 git clone https://github.com/qingchencloud/clawapp.git
@@ -116,7 +120,7 @@ cd clawapp
 在项目根目录创建 `.env` 文件：
 
 ```bash
-# 手机连接时的密码（自己设一个）
+# APK 客户端连接时的密码（自己设一个）
 PROXY_TOKEN=my-secret-token-123
 
 # OpenClaw Gateway 的 Token（在 ~/.openclaw/gateway.yaml 里找）
@@ -129,27 +133,25 @@ OPENCLAW_GATEWAY_TOKEN=你的gateway-token
 docker compose up -d --build
 ```
 
-### 方式二：直接运行
+#### 直接运行
 
 ```bash
 git clone https://github.com/qingchencloud/clawapp.git
 cd clawapp
-npm run install:all
-npm run build:h5
+cd server && npm install
 cp server/.env.example server/.env
 # 编辑 server/.env，填入你的 token
 npm start
 ```
 
-### 手机访问
+### 第二步：安装 APK
 
-1. 确保手机和电脑在同一 WiFi
-2. 查看电脑 IP：
-   - Mac: `ifconfig | grep "inet " | grep -v 127.0.0.1`
-   - Windows: `ipconfig`
-   - Linux: `ip addr`
-3. 手机浏览器打开 `http://你的电脑IP:3210`
-4. 填入服务器地址和 Token，点击连接
+1. 在 GitHub 仓库的 [Actions 页面](https://github.com/candle233/clawapp/actions) 或 [Releases](https://github.com/candle233/clawapp/releases) 下载最新 APK
+2. 在 Android 手机上安装（需要允许"未知来源"）
+3. 打开 ClawApp，在连接设置页填入：
+   - **服务器地址**：代理服务端的 IP 或域名及端口，如 `192.168.1.100:3210`
+   - **Token**：`.env` 里设置的 `PROXY_TOKEN`
+4. 点击连接即可使用
 
 ---
 
@@ -157,15 +159,14 @@ npm start
 
 ### 本地部署（同一网络）
 
-适合家庭/办公室使用，手机和电脑在同一 WiFi 下。
+适合家庭/办公室使用，APK 和服务器在同一 WiFi 下。
 
 ```bash
 git clone https://github.com/qingchencloud/clawapp.git
-cd clawapp && npm run install:all
-npm run build:h5
-cp server/.env.example server/.env
-# 编辑 server/.env 填入 token
-npm start
+cd clawapp/server && npm install
+cp .env.example .env
+# 编辑 .env 填入 token
+node index.js
 ```
 
 ### Docker 容器部署
@@ -286,7 +287,7 @@ server {
 
 <h2 id="connection">连接说明</h2>
 
-打开 H5 页面后会看到连接设置页：
+打开 ClawApp APK 后会看到连接设置页：
 
 | 字段 | 填什么 | 示例 |
 |------|--------|------|
@@ -295,15 +296,16 @@ server {
 
 > 💡 通过 HTTPS 访问时（如 Cloudflare Tunnel），WebSocket 会自动切换为 WSS 加密连接。
 
-### H5 客户端设置
+### APK 应用设置
 
 点击聊天页右上角 ⚙️ 图标：
 
 - **主题**：浅色 / 深色 / 跟随系统
 - **语言**：中文 / English
 - **自动播报**：AI 回复是否自动语音朗读
-- **语音识别后自动发送**：说完话是否立即发送（需支持 Web Speech API 的浏览器）
+- **语音识别后自动发送**：说完话是否立即发送
 - **免打扰**：设置不接受系统播报的时间段
+- **APK 常驻模式**：开启前台服务 + 唤醒词监听（详见 [APK 常驻模式](#apk-resident)）
 - **断开连接**：返回连接页
 
 ---
@@ -635,9 +637,11 @@ ssh -f -N -L 127.0.0.1:18789:127.0.0.1:18789 user@你的电脑IP
 
 ### What is this?
 
-ClawApp is an H5 mobile chat client that lets you chat with your [OpenClaw](https://github.com/openclaw/openclaw) AI agent from any phone browser.
+ClawApp is an Android APK that lets you chat with your [OpenClaw](https://github.com/openclaw/openclaw) AI agent from your phone. Web browser access has been removed; the APK is the only supported client.
 
 ### Quick Start
+
+**Step 1 — Deploy the proxy server:**
 
 **Docker:**
 ```bash
@@ -651,12 +655,14 @@ docker compose up -d --build
 **Direct:**
 ```bash
 git clone https://github.com/qingchencloud/clawapp.git
-cd clawapp && npm run install:all && npm run build:h5
-cp server/.env.example server/.env  # edit tokens
-npm start
+cd clawapp/server && npm install
+cp .env.example .env  # edit tokens
+node index.js
 ```
 
-Open `http://your-ip:3210` on your phone.
+**Step 2 — Install the APK:**
+
+Download the latest APK from [GitHub Actions](https://github.com/candle233/clawapp/actions) or [Releases](https://github.com/candle233/clawapp/releases), install it on your Android phone, then enter your server address and token in the connection screen.
 
 ### Remote Access
 

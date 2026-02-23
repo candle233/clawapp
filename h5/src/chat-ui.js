@@ -8,6 +8,7 @@ import { saveMessage, saveMessages, getLocalMessages, clearSessionMessages, isSt
 import { addTtsButton, getTtsAuto } from './tts.js'
 import { initBroadcastCenter, handlePushEvent, showBroadcastCenter, resetUnread } from './broadcast-center.js'
 import { initVoiceInput, isSpeechSupported, getVoiceAutoSend } from './voice-input.js'
+import { initNativeMode, isNative } from './native-mode.js'
 
 const STORAGE_SESSION_KEY = 'clawapp-session-key'
 
@@ -182,6 +183,17 @@ export function initChatUI(onSettings) {
       showDisconnectBanner(false)
     }
   })
+
+  // 常驻模式（APK 专属）— 唤醒词检测到时触发语音输入
+  if (isNative()) {
+    initNativeMode(() => {
+      const voiceBtn = document.getElementById('voice-btn')
+      if (voiceBtn && voiceBtn.style.display !== 'none') {
+        // 触发麦克风按钮的点击（已有语音输入模块处理后续）
+        voiceBtn.click()
+      }
+    })
+  }
 }
 
 function autoResize() {
@@ -208,6 +220,19 @@ function handleSendClick() {
     wsClient.chatAbort(_sessionKey, _currentRunId).catch(() => {})
     return
   }
+  sendMessage()
+}
+
+/**
+ * 供 native-mode 调用的公共发送接口
+ * 将文本填入输入框并触发发送
+ * @param {string} text - 要发送的消息文本
+ */
+export function sendTextMessage(text) {
+  if (!text || !_textarea) return
+  _textarea.value = text
+  autoResize()
+  updateSendState()
   sendMessage()
 }
 

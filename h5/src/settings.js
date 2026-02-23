@@ -7,6 +7,7 @@ import { getLang, setLang, t, onLangChange } from './i18n.js'
 import { getTtsAuto, setTtsAuto } from './tts.js'
 import { renderDndSection } from './broadcast-center.js'
 import { isSpeechSupported, getVoiceAutoSend, setVoiceAutoSend } from './voice-input.js'
+import { isNative, getNativeSettings, setNativeSettings, applyNativeSettings } from './native-mode.js'
 
 let _onDisconnect = null
 
@@ -96,6 +97,37 @@ export function showSettings() {
           ${t('settings.disconnect')}
         </button>
       </div>
+
+      ${isNative() ? `
+      <div class="settings-section" style="margin-top:8px;padding-top:16px;border-top:1px solid var(--border)">
+        <div class="settings-label">🤖 ${t('native.title')}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">${t('native.desc')}</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:13px;color:var(--text-secondary)">${t('native.resident')}</span>
+            <label class="dnd-switch">
+              <input type="checkbox" id="native-resident-toggle" ${getNativeSettings().residentEnabled ? 'checked' : ''} />
+              <span class="dnd-track"></span>
+            </label>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:13px;color:var(--text-secondary)">${t('native.wakeword')}</span>
+            <label class="dnd-switch">
+              <input type="checkbox" id="native-wakeword-toggle" ${getNativeSettings().wakeWordEnabled ? 'checked' : ''} />
+              <span class="dnd-track"></span>
+            </label>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:13px;color:var(--text-secondary)">${t('native.autotts')}</span>
+            <label class="dnd-switch">
+              <input type="checkbox" id="native-autotts-toggle" ${getNativeSettings().autoTts ? 'checked' : ''} />
+              <span class="dnd-track"></span>
+            </label>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:12px;line-height:1.6">${t('native.battery.tip')}</div>
+      </div>
+      ` : ''}
     </div>
   `
 
@@ -153,6 +185,22 @@ export function showSettings() {
   panel.querySelector('#settings-disconnect').onclick = () => {
     closeSettings()
     _onDisconnect?.()
+  }
+
+  // 常驻模式设置（APK 专属）
+  if (isNative()) {
+    const syncNative = () => {
+      const s = getNativeSettings()
+      setNativeSettings({
+        residentEnabled: panel.querySelector('#native-resident-toggle')?.checked ?? s.residentEnabled,
+        wakeWordEnabled: panel.querySelector('#native-wakeword-toggle')?.checked ?? s.wakeWordEnabled,
+        autoTts: panel.querySelector('#native-autotts-toggle')?.checked ?? s.autoTts,
+      })
+      applyNativeSettings()
+    }
+    panel.querySelector('#native-resident-toggle')?.addEventListener('change', syncNative)
+    panel.querySelector('#native-wakeword-toggle')?.addEventListener('change', syncNative)
+    panel.querySelector('#native-autotts-toggle')?.addEventListener('change', syncNative)
   }
 
   document.body.appendChild(overlay)

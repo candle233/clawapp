@@ -11,6 +11,7 @@
   <a href="#deploy">部署方式</a> •
   <a href="#remote">外网访问</a> •
   <a href="#config">配置参数</a> •
+  <a href="#apk-resident">APK 常驻</a> •
   <a href="#faq">常见问题</a> •
   <a href="#community">社区交流</a> •
   <a href="#english">English</a>
@@ -59,6 +60,10 @@ OpenClaw Gateway（端口 18789）
 - 👋 新用户功能引导
 - 📱 PWA 支持（添加到主屏幕，离线可用）
 - 📦 Android APK 打包（Capacitor + GitHub Actions 自动构建）
+- 🔊 **TTS 语音播报**：每条 AI 回复旁一键播放语音；支持自动播报开关
+- 🎙️ **语音输入**：按住/点击麦克风按钮说话，识别结果自动填入输入框并发送（Web Speech API）
+- 📣 **播报中心**：接收 OpenClaw Cron 定时播报（天气/新闻/股票），支持免打扰时段、一键 TTS 朗读
+- 🤖 **APK 唤醒词常驻**（Android 专属）：说 "Claw Claw" 唤醒 → 语音输入 → AI 回复 → 自动 TTS，全程免手动
 
 ---
 
@@ -369,6 +374,7 @@ Android 的电池优化机制可能在 App 进入后台后**限制前台服务�
 | `PROXY_TOKEN` | **是** | - | H5 客户端连接密码 |
 | `OPENCLAW_GATEWAY_URL` | 否 | `ws://127.0.0.1:18789` | Gateway 地址（Docker 下自动设为 `host.docker.internal`） |
 | `OPENCLAW_GATEWAY_TOKEN` | **是** | - | Gateway 认证 token |
+| `INGEST_TOKEN` | 否 | - | Cron 播报 Webhook 鉴权 token（`POST /ingest/cron`），未配置则不限制 |
 | `ALLOWED_ORIGINS` | 否 | - | 额外 CORS 白名单，逗号分隔 |
 
 ---
@@ -378,7 +384,7 @@ Android 的电池优化机制可能在 App 进入后台后**限制前台服务�
 ```
 clawapp/
 ├── server/                # WebSocket 代理服务端
-│   ├── index.js           # Express + WS 代理 + Gateway 握手
+│   ├── index.js           # Express + WS 代理 + Gateway 握手 + /ingest/cron Webhook
 │   ├── package.json
 │   ├── Dockerfile
 │   └── .env.example
@@ -392,6 +398,10 @@ clawapp/
 │   │   ├── commands.js    # 快捷指令面板
 │   │   ├── markdown.js    # Markdown 渲染 + 代码高亮
 │   │   ├── media.js       # 图片处理
+│   │   ├── tts.js         # TTS 语音播报（Gateway RPC tts.convert）
+│   │   ├── voice-input.js # 语音输入（Web Speech API）
+│   │   ├── broadcast-center.js # 播报中心（Cron 推送 + DND）
+│   │   ├── native-mode.js # APK 常驻模式（Capacitor 桥接）
 │   │   ├── i18n.js        # 国际化（中文 / English）
 │   │   ├── theme.js       # 主题管理（亮/暗/自动）
 │   │   ├── settings.js    # 设置面板
@@ -400,6 +410,10 @@ clawapp/
 │   ├── index.html
 │   └── vite.config.js
 ├── android/               # Capacitor Android 项目
+│   └── app/src/main/java/com/qingchencloud/clawapp/
+│       ├── MainActivity.java
+│       ├── ClawPlugin.java        # Capacitor 插件（服务控制 + JS 事件）
+│       └── ClawForegroundService.java # 前台常驻服务 + 唤醒词检测
 ├── .github/workflows/     # GitHub Actions
 │   └── build-apk.yml      # 自动构建 APK
 ├── docs/                  # 文档 + GitHub Pages
@@ -541,6 +555,40 @@ ssh -f -N -L 127.0.0.1:18789:127.0.0.1:18789 user@你的电脑IP
 
 这样远程 ClawApp 就能通过 `ws://127.0.0.1:18789` 连接到你本地的 Gateway。
 
+**Q: 语音播报（TTS）没有声音？**
+
+1. 确认 OpenClaw Gateway 已配置 TTS 服务（`tts.convert` RPC 可用）
+2. 检查手机音量是否关闭或静音
+3. iOS Safari 需要用户交互后才能自动播放音频（点击播放按钮或开启"自动播报"后手动触发一次）
+4. 如果是网络请求失败，查看浏览器控制台是否有 `tts.convert` 错误
+
+**Q: 麦克风语音输入按钮不见了？**
+
+语音输入按钮仅在浏览器支持 `SpeechRecognition`（Web Speech API）时显示。
+
+- Chrome / Edge / Android WebView 支持较好
+- iOS Safari 需要 iOS 14.5+ 且需在 HTTPS 环境下使用（或 localhost）
+- 非 HTTPS 环境中麦克风权限会被浏览器拒绝，按钮会自动隐藏
+
+**Q: 如何使用 Cron 定时播报（天气/新闻/股票）？**
+
+1. 在 `server/.env` 中设置 `INGEST_TOKEN=your-ingest-token`（不设置则不限制来源）
+2. 在 OpenClaw 中配置 Cron 任务，将 `delivery.mode` 设为 `webhook`，`delivery.to` 设为：
+   ```
+   http://your-clawapp.example.com:3210/ingest/cron
+   ```
+3. 请求头加上 `X-Ingest-Token: your-ingest-token`（或用 `?token=xxx`）
+4. 收到推送后，H5 会弹出顶部通知卡片，并在「播报中心」（🔔 按钮）中记录
+5. 如需静默某段时间，在设置面板中开启「免打扰」并配置时间段
+
+**Q: APK 唤醒词 "Claw Claw" 没有响应？**
+
+1. **首先检查电池优化**（最常见原因）：设置 → 应用 → ClawApp → 电池 → 不受限制
+2. 部分品牌（小米/OPPO/华为）还需在「自启动管理」中允许 ClawApp
+3. 确认设置面板中「唤醒词监听」开关已开启
+4. 确认手机安装了 Google 语音服务（国内定制 ROM 可能需要单独安装）
+5. 唤醒词检测需要网络连接，请确认网络正常
+
 ---
 
 <h2 id="security">安全建议</h2>
@@ -616,9 +664,27 @@ Open `http://your-ip:3210` on your phone.
 - **SSH Tunnel**: `ssh -f -N -R 0.0.0.0:3210:localhost:3210 user@server`
 - **Nginx**: Configure WebSocket proxy to port 3210
 
+### Cron Broadcast Ingest
+
+```
+POST http://your-clawapp:3210/ingest/cron
+X-Ingest-Token: <INGEST_TOKEN>
+Content-Type: application/json
+
+{"title": "Weather", "text": "Sunny, 22°C"}
+```
+
+Set `INGEST_TOKEN` in `server/.env` to authenticate. Configure OpenClaw Cron with `delivery.mode=webhook` pointing to this endpoint.
+
 ### Features
 
 Real-time streaming chat, image send & receive, Markdown rendering, offline message cache (IndexedDB), Ed25519 device auth, session management, dark/light/auto theme, English/Chinese i18n, smart reconnect (no flicker), XSS protection, token auth.
+
+**New in this release:**
+- 🔊 **TTS playback** — per-message voice button + auto-play setting (Gateway `tts.convert` RPC)
+- 🎙️ **Voice input** — hold or tap mic button to dictate; fills textarea and optionally auto-sends (Web Speech API)
+- 📣 **Broadcast Center** — receive scheduled Cron broadcasts via `POST /ingest/cron`; bell badge, notification cards, Do Not Disturb time range, per-item TTS
+- 🤖 **APK resident mode** (Android only) — foreground service + "Claw Claw" wake word → voice input → AI reply → auto TTS
 
 </details>
 

@@ -131,6 +131,38 @@ function broadcastToAll(event, data) {
 }
 
 /**
+ * 处理 broadcast.sync RPC（客户端本地广播，不转发 Gateway）
+ * 把消息发给所有其他下游客户端并回复 receipt
+ */
+function handleBroadcastSync(sourceClientId, frame) {
+  const params = frame.params || {};
+  const title = String(params.title || '').substring(0, 200);
+  const text = String(params.text || params.body || '').substring(0, 2000);
+  const timestamp = Date.now();
+
+  let delivered = 0;
+  for (const [cid, c] of clients) {
+    if (cid !== sourceClientId) {
+      if (sendMessage(c.downstream, { type: 'event', event: 'proxy.sync', data: { title, text, timestamp } })) {
+        delivered++;
+      }
+    }
+  }
+
+  const sourceClient = clients.get(sourceClientId);
+  if (!sourceClient) return;
+  sendMessage(sourceClient.downstream, {
+    type: 'res',
+    id: frame.id,
+    ok: true,
+    payload: { delivered, total: clients.size - 1, timestamp },
+  });
+  // Sanitize title before logging to avoid log injection
+  const safeTitle = title.replace(/[\r\n]/g, ' ').substring(0, 40);
+  log.info(`broadcast.sync [${sourceClientId}] → ${delivered}/${clients.size - 1} 设备 title="${safeTitle}"`);
+}
+
+/**
  * 通过第一个已连接的上游连接向 Gateway 发送 chat.inject
  */
 function injectToGateway(text, sessionKey) {
@@ -476,7 +508,15 @@ wss.on('connection', (ws, req) => {
 
     const msgStr = data.toString()
     log.debug(`下游消息 [${clientId}]: ${msgStr.substring(0, 80)}...`);
-    
+
+    // broadcast.sync 由代理本地处理，不转发到 Gateway
+    let parsed;
+    try { parsed = JSON.parse(msgStr); } catch { parsed = null; }
+    if (parsed?.type === 'req' && parsed?.method === 'broadcast.sync') {
+      handleBroadcastSync(clientId, parsed);
+      return;
+    }
+
     // 透传给上游
     sendMessage(client.upstream, msgStr);
   });

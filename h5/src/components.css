@@ -1321,3 +1321,68 @@
   color: rgba(255,255,255,0.65);
   margin-left: 4px;
 }
+
+/* ── 跨设备同步卡片 ───────────────────────────────────── */
+.sync-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin: 6px 16px;
+  max-width: 340px;
+}
+
+.sync-card--incoming {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-secondary));
+}
+
+.sync-card--error {
+  border-color: color-mix(in srgb, var(--danger, #ef4444) 40%, transparent);
+}
+
+.sync-card-icon {
+  flex-shrink: 0;
+  color: var(--accent);
+  margin-top: 2px;
+}
+
+.sync-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sync-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sync-card-body {
+  font-size: 14px;
+  color: var(--text-primary);
+  line-height: 1.45;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.sync-card-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.sync-card-status--ok {
+  color: #22c55e;
+}
+
+.sync-card-status--err {
+  color: var(--danger, #ef4444);
+}

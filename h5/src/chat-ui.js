@@ -1,6 +1,6 @@
 import { wsClient, uuid } from './ws-client.js'
 import { renderMarkdown } from './markdown.js'
-import { initMedia, pickImage, getAttachments, clearAttachments, hasAttachments, showLightbox } from './media.js'
+import { initMedia, pickImage, getAttachments, getDisplayAttachments, getVideoContext, clearAttachments, hasAttachments, showLightbox } from './media.js'
 import { initCommands, showCommands } from './commands.js'
 import { t, formatRelativeTime } from './i18n.js'
 import { initSettings, showSettings } from './settings.js'
@@ -251,6 +251,8 @@ async function sendMessage() {
   if (!text && !hasAttachments()) return
 
   const attachments = getAttachments()
+  const displayAtts  = getDisplayAttachments()
+  const videoCtx     = getVideoContext()
   _textarea.value = ''
   _textarea.style.height = 'auto'
   clearAttachments()
@@ -264,10 +266,10 @@ async function sendMessage() {
       _isTaskMode = true
       // 用户气泡显示原始任务描述，AI 收到包装后的提示词
       if (_isSending || _isStreaming) {
-        _messageQueue.push({ text: taskDesc, rawSend: wrapTaskMessage(taskDesc), attachments: attachments })
+        _messageQueue.push({ text: taskDesc, rawSend: wrapTaskMessage(taskDesc), attachments, displayAtts })
         return
       }
-      await doSend(taskDesc, attachments, wrapTaskMessage(taskDesc))
+      await doSend(taskDesc, attachments, wrapTaskMessage(taskDesc), displayAtts)
       return
     }
   }
@@ -276,19 +278,20 @@ async function sendMessage() {
 
   // 如果正在发送或流式响应中，加入队列
   if (_isSending || _isStreaming) {
-    _messageQueue.push({ text, attachments })
+    _messageQueue.push({ text, attachments, displayAtts, videoCtx })
     // 不再这里 append，等发送时统一处理
     return
   }
 
-  await doSend(text, attachments)
+  await doSend(text, attachments, null, displayAtts, videoCtx)
 }
 
 /** 实际发送消息 */
-async function doSend(text, attachments, rawSend) {
-  if (text) {
+async function doSend(text, attachments, rawSend, displayAtts, videoCtx) {
+  const showAtts = displayAtts || attachments
+  if (text || showAtts?.length) {
     console.log('[chat] appendUserMessage:', text.substring(0, 50))
-    appendUserMessage(text, attachments)
+    appendUserMessage(text, showAtts)
     // 保存用户消息到本地（含附件）
     saveMessage({ id: uuid(), sessionKey: _sessionKey, role: 'user', content: text, attachments: attachments?.length ? attachments : undefined, timestamp: Date.now() })
   }
@@ -296,11 +299,11 @@ async function doSend(text, attachments, rawSend) {
   _isSending = true
   _textarea.disabled = true
 
-  // 注入长期记忆上下文（对 AI 可见，用户气泡只显示原始消息）
+  // 注入上下文：视频分析说明 → 个性化推荐 → 长期记忆
   const memCtx     = buildMemoryContext()
   const personaCtx = buildPersonaContext()
-  const prefix     = [personaCtx, memCtx].filter(Boolean).join('')
-  const textToSend = rawSend || (prefix ? prefix + text : text)
+  const prefix     = [videoCtx, personaCtx, memCtx].filter(Boolean).join('')
+  const textToSend = rawSend || (prefix ? prefix + (text || '') : (text || ''))
 
   // 追踪话题频次:
   // - 跳过 rawSend 模式（任务规划消息已包装，不应重复计数原始话题）
@@ -331,7 +334,7 @@ function processMessageQueue() {
   // 处理任务规划消息
   if (next.rawSend) {
     _isTaskMode = true
-    doSend(next.text, next.attachments || [], next.rawSend).catch(err => {
+    doSend(next.text, next.attachments || [], next.rawSend, next.displayAtts).catch(err => {
       showTyping(false)
       appendSystemMessage(`${t('chat.send.error')}: ${err.message}`)
     })
@@ -624,8 +627,15 @@ function appendUserMessage(text, attachments, msgTime) {
   let html = escapeText(text).replace(/\n/g, '<br>')
   if (attachments?.length) {
     attachments.forEach(att => {
-      const src = att.data || (att.content ? `data:${att.mimeType};base64,${att.content}` : '')
-      if (src) html += `<br><img src="${src}" alt="attachment" class="msg-img" />`
+      if (att.type === 'video') {
+        // Show video card with thumbnail + play icon
+        const thumbStyle = att.thumbnail ? ` style="background-image:url(${att.thumbnail})"` : ''
+        const durStr = att.duration > 0 ? ` <span class="msg-video-dur">${Math.round(att.duration)}s · ${att.frameCount}${t('media.video.frames')}</span>` : ''
+        html += `<br><div class="msg-video-card"${thumbStyle}><span class="msg-video-play">▶</span><span class="msg-video-filename">${escapeText(att.name)}${durStr}</span></div>`
+      } else {
+        const src = att.data || (att.content ? `data:${att.mimeType};base64,${att.content}` : '')
+        if (src) html += `<br><img src="${src}" alt="attachment" class="msg-img" />`
+      }
     })
   }
   bubble.innerHTML = html

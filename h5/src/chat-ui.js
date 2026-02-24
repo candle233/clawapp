@@ -10,6 +10,7 @@ import { initBroadcastCenter, handlePushEvent, showBroadcastCenter, resetUnread 
 import { initVoiceInput, isSpeechSupported, getVoiceAutoSend } from './voice-input.js'
 import { initNativeMode, isNative } from './native-mode.js'
 import { buildMemoryContext, showMemoryPanel } from './memory.js'
+import { wrapTaskMessage, createStepTracker, updateStepTracker } from './task-planner.js'
 
 const STORAGE_SESSION_KEY = 'clawapp-session-key'
 
@@ -32,6 +33,10 @@ let _onSettingsCallback = null
 let _renderTimer = null    // 节流渲染定时器
 let _renderPending = false // 是否有待渲染
 const RENDER_THROTTLE = 30 // 渲染节流间隔 ms
+
+// Task planner state
+let _isTaskMode = false        // 当前是否为任务规划消息
+let _currentTaskTracker = null // 当前步骤追踪卡片元素
 
 const SVG_SEND = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>`
 const SVG_ATTACH = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>`
@@ -250,6 +255,24 @@ async function sendMessage() {
   clearAttachments()
   updateSendState()
 
+  // 检查是否为任务规划模式（/task 前缀）
+  const TASK_PREFIX = '/task '
+  if (text.startsWith(TASK_PREFIX)) {
+    const taskDesc = text.slice(TASK_PREFIX.length).trim()
+    if (taskDesc) {
+      _isTaskMode = true
+      // 用户气泡显示原始任务描述，AI 收到包装后的提示词
+      if (_isSending || _isStreaming) {
+        _messageQueue.push({ text: taskDesc, rawSend: wrapTaskMessage(taskDesc), attachments: attachments })
+        return
+      }
+      await doSend(taskDesc, attachments, wrapTaskMessage(taskDesc))
+      return
+    }
+  }
+
+  _isTaskMode = false
+
   // 如果正在发送或流式响应中，加入队列
   if (_isSending || _isStreaming) {
     _messageQueue.push({ text, attachments })
@@ -261,7 +284,7 @@ async function sendMessage() {
 }
 
 /** 实际发送消息 */
-async function doSend(text, attachments) {
+async function doSend(text, attachments, rawSend) {
   if (text) {
     console.log('[chat] appendUserMessage:', text.substring(0, 50))
     appendUserMessage(text, attachments)
@@ -274,7 +297,7 @@ async function doSend(text, attachments) {
 
   // 注入长期记忆上下文（对 AI 可见，用户气泡只显示原始消息）
   const memCtx = buildMemoryContext()
-  const textToSend = memCtx ? memCtx + text : text
+  const textToSend = rawSend || (memCtx ? memCtx + text : text)
 
   try {
     await wsClient.chatSend(_sessionKey, textToSend, attachments.length ? attachments : undefined)
@@ -297,6 +320,16 @@ function processMessageQueue() {
   if (_messageQueue.length === 0) return
   if (_isSending || _isStreaming) return
   const next = _messageQueue.shift()
+  // 处理任务规划消息
+  if (next.rawSend) {
+    _isTaskMode = true
+    doSend(next.text, next.attachments || [], next.rawSend).catch(err => {
+      showTyping(false)
+      appendSystemMessage(`${t('chat.send.error')}: ${err.message}`)
+    })
+    return
+  }
+  _isTaskMode = false
   // 用户消息已经在入队时 append 过了，这里不再 append
   showTyping(true)
   _isSending = true
@@ -470,6 +503,10 @@ function resetStreamState() {
     bindImageClicks(_currentAiBubble)
     scrollToBottom()
   }
+  // 任务规划模式：最终更新追踪器
+  if (_isTaskMode && _currentTaskTracker && _currentAiText) {
+    updateStepTracker(_currentTaskTracker, _currentAiText)
+  }
   _renderPending = false
   _lastRenderTime = 0
   _currentAiBubble = null
@@ -478,6 +515,8 @@ function resetStreamState() {
   _currentRunId = null
   _isStreaming = false
   _toolCards.clear()
+  _isTaskMode = false
+  _currentTaskTracker = null
   updateSendState()
 }
 
@@ -508,6 +547,10 @@ function doRender() {
     _currentAiBubble.innerHTML = renderMarkdown(_currentAiText)
     scrollToBottom()
   }
+  // 任务规划模式：实时更新步骤追踪器
+  if (_isTaskMode && _currentTaskTracker && _currentAiText) {
+    updateStepTracker(_currentTaskTracker, _currentAiText)
+  }
 }
 
 function createAiBubble(msgTime) {
@@ -516,6 +559,12 @@ function createAiBubble(msgTime) {
   const bubble = document.createElement('div')
   bubble.className = 'msg-bubble'
   
+  // 任务规划模式：在气泡前插入步骤追踪卡片
+  if (_isTaskMode) {
+    _currentTaskTracker = createStepTracker()
+    wrapper.appendChild(_currentTaskTracker)
+  }
+
   // 添加光标
   const cursor = document.createElement('span')
   cursor.className = 'typing-cursor'

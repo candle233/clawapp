@@ -1067,3 +1067,104 @@
   margin-top: 12px;
   line-height: 1.6;
 }
+
+/* ── 任务规划步骤追踪卡片 ─────────────────────────────── */
+.task-tracker {
+  background: var(--bg-card);
+  border: 1px solid var(--accent, #e94560);
+  border-left: 3px solid var(--accent, #e94560);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.task-tracker-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.task-tracker-icon {
+  font-size: 14px;
+}
+
+.task-tracker-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.task-tracker-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: var(--bg-input);
+}
+
+.task-tracker-status.running {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  animation: pulse-fade 1.5s ease-in-out infinite;
+}
+
+.task-tracker-status.done {
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.task-tracker-status.error {
+  color: var(--danger, #ef4444);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.task-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.task-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.task-step--pending  { opacity: 0.55; }
+.task-step--running  { background: color-mix(in srgb, var(--accent) 8%, transparent); opacity: 1; }
+.task-step--done     { opacity: 0.85; }
+.task-step--error    { background: rgba(239, 68, 68, 0.08); opacity: 1; }
+
+.task-step-icon {
+  font-size: 13px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+.task-step-text {
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.task-step--done .task-step-text {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.task-step--running .task-step-text {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+@keyframes pulse-fade {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.55; }
+}

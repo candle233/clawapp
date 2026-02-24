@@ -7,6 +7,12 @@ import { t } from './i18n.js'
 function getCommandGroups() {
   return [
     {
+      titleKey: 'cmd.task',
+      commands: [
+        { cmd: '/task ', descKey: 'cmd.task.run', fill: true },
+      ],
+    },
+    {
       titleKey: 'cmd.model',
       commands: [
         { cmd: '/model', descKey: 'cmd.model.switch', fill: true },

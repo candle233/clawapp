@@ -9,7 +9,7 @@ import { renderDndSection } from './broadcast-center.js'
 import { isSpeechSupported, getVoiceAutoSend, setVoiceAutoSend } from './voice-input.js'
 import { isNative, getNativeSettings, setNativeSettings, applyNativeSettings } from './native-mode.js'
 import { getMemoryEnabled, setMemoryEnabled } from './memory.js'
-import { getPersonaEnabled, setPersonaEnabled } from './persona.js'
+import { getPersonaEnabled, setPersonaEnabled, resetPersonaStats, getTopicStats } from './persona.js'
 
 let _onDisconnect = null
 
@@ -104,6 +104,7 @@ export function showSettings() {
           </button>
         </div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.5">${t('persona.settings.hint')}</div>
+        <div id="persona-stats"></div>
       </div>
 
       ${isSpeechSupported() ? `
@@ -217,6 +218,9 @@ export function showSettings() {
     }
   })
 
+  // 个性化推荐：话题统计面板
+  renderPersonaStats(panel.querySelector('#persona-stats'))
+
   // 语音自动发送
   if (isSpeechSupported()) {
     panel.querySelectorAll('#voice-auto-toggle .settings-toggle').forEach(btn => {
@@ -258,4 +262,53 @@ export function showSettings() {
 function closeSettings() {
   document.querySelector('.settings-overlay')?.remove()
   document.querySelector('.settings-panel')?.remove()
+}
+
+/** 渲染话题统计迷你面板（chips + 重置按钮） */
+function renderPersonaStats(container) {
+  if (!container) return
+  const stats = getTopicStats()
+  const learned = stats.filter(s => s.count > 0)
+
+  if (!learned.length) {
+    container.innerHTML = ''
+    return
+  }
+
+  const chips = learned.map(s => `
+    <span class="persona-topic-chip persona-topic-chip--active">
+      ${t(s.labelKey)} <span class="persona-topic-count">×${s.count}</span>
+    </span>
+  `).join('')
+
+  container.innerHTML = `
+    <div class="persona-stats-wrap">
+      <div class="persona-stats-title">${t('persona.stats.title')}</div>
+      <div class="persona-topic-chips">${chips}</div>
+      <button class="persona-stats-reset-btn" id="persona-stats-reset">${t('persona.stats.reset')}</button>
+    </div>
+  `
+
+  container.querySelector('#persona-stats-reset').onclick = () => {
+    const btn = container.querySelector('#persona-stats-reset')
+    if (btn.dataset.confirming === 'true') {
+      resetPersonaStats()
+      container.innerHTML = ''
+      return
+    }
+    // 切换为确认态（点一次显示确认，再点一次执行）
+    btn.dataset.confirming = 'true'
+    btn.textContent = `⚠️ ${t('confirm')}?`
+    btn.style.color = 'var(--danger, #ef4444)'
+    btn.style.borderColor = 'var(--danger, #ef4444)'
+    // 3 秒后自动还原
+    setTimeout(() => {
+      if (btn.dataset.confirming === 'true') {
+        btn.dataset.confirming = ''
+        btn.textContent = t('persona.stats.reset')
+        btn.style.color = ''
+        btn.style.borderColor = ''
+      }
+    }, 3000)
+  }
 }

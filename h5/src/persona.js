@@ -13,8 +13,8 @@ import { t } from './i18n.js'
 const PERSONA_STATS_KEY   = 'clawapp-persona-stats'
 const PERSONA_ENABLED_KEY = 'clawapp-persona-enabled'
 
-/** 话题出现多少次后开始注入个性化指令 */
-const TOPIC_THRESHOLD = 2
+/** 话题出现多少次后开始注入个性化指令（首次提问即生效） */
+const TOPIC_THRESHOLD = 1
 
 // ── 话题定义 ─────────────────────────────────────────────────────────────────
 

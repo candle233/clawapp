@@ -4,4 +4,10 @@
     <string name="title_activity_main">ClawApp</string>
     <string name="package_name">com.qingchencloud.clawapp</string>
     <string name="custom_url_scheme">com.qingchencloud.clawapp</string>
+    <!-- 前台服务通知 -->
+    <string name="notification_channel_name">ClawApp 常驻服务</string>
+    <string name="notification_channel_desc">保持 ClawApp 在后台运行，支持唤醒词监听</string>
+    <string name="notification_title">ClawApp 运行中</string>
+    <string name="notification_text_wake">🎙️ 正在监听唤醒词 "Claw Claw"</string>
+    <string name="notification_text_idle">已常驻后台</string>
 </resources>

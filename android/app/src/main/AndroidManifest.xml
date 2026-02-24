@@ -24,6 +24,13 @@
 
         </activity>
 
+        <!-- 前台常驻服务 — 需要 foregroundServiceType="microphone" (API 34+) -->
+        <service
+            android:name=".ClawForegroundService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -36,6 +43,15 @@
     </application>
 
     <!-- Permissions -->
-
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- 保持 CPU 唤醒以支持锁屏监听 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- 发送前台通知（Android 13+） -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 请求忽略电池优化（弹窗引导，可选） -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
 </manifest>

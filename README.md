@@ -1,7 +1,7 @@
 # ClawApp
 
 <p align="center">
-  <strong>📱 用手机浏览器和你的 OpenClaw AI 智能体聊天</strong>
+  <strong>📱 用手机 App 和你的 OpenClaw AI 智能体聊天</strong>
 </p>
 
 <p align="center">
@@ -11,6 +11,7 @@
   <a href="#deploy">部署方式</a> •
   <a href="#remote">外网访问</a> •
   <a href="#config">配置参数</a> •
+  <a href="#apk-resident">APK 常驻</a> •
   <a href="#faq">常见问题</a> •
   <a href="#community">社区交流</a> •
   <a href="#english">English</a>
@@ -32,14 +33,16 @@
 ClawApp 解决了这个问题：
 
 ```
-手机浏览器（任意网络）
+ClawApp Android APK（任意网络）
     ↓ WebSocket (WS / WSS)
-代理服务端（ClawApp Server，端口 3210，离线缓存）
+代理服务端（ClawApp Server，端口 3210）
     ↓ WebSocket + Ed25519 设备签名
 OpenClaw Gateway（端口 18789）
 ```
 
-代理服务端自动完成 Ed25519 设备签名握手认证（兼容 OpenClaw 2.13+），同时提供 H5 聊天页面，打开就能用，不需要装 App。
+代理服务端自动完成 Ed25519 设备签名握手认证（兼容 OpenClaw 2.13+）。安装 APK 后在设置页填入服务器地址和 Token 即可使用。
+
+> ⚠️ **注意**：Web 浏览器访问模式已移除。请通过 GitHub Actions 自动构建的 APK 在手机上使用 ClawApp。
 
 ---
 
@@ -59,6 +62,10 @@ OpenClaw Gateway（端口 18789）
 - 👋 新用户功能引导
 - 📱 PWA 支持（添加到主屏幕，离线可用）
 - 📦 Android APK 打包（Capacitor + GitHub Actions 自动构建）
+- 🔊 **TTS 语音播报**：每条 AI 回复旁一键播放语音；支持自动播报开关
+- 🎙️ **语音输入**：按住/点击麦克风按钮说话，识别结果自动填入输入框并发送（Web Speech API）
+- 📣 **播报中心**：接收 OpenClaw Cron 定时播报（天气/新闻/股票），支持免打扰时段、一键 TTS 朗读
+- 🤖 **APK 唤醒词常驻**（Android 专属）：说 "Claw Claw" 唤醒 → 语音输入 → AI 回复 → 自动 TTS，全程免手动
 
 ---
 
@@ -81,27 +88,29 @@ OpenClaw Gateway（端口 18789）
 
 <h2 id="quickstart">快速开始</h2>
 
-### 一键部署（Mac / Linux）
+### 第一步：部署代理服务端
+
+#### 一键部署（Mac / Linux）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/qingchencloud/clawapp/main/install.sh | bash
 ```
 
-### 一键部署（Windows PowerShell）
+#### 一键部署（Windows PowerShell）
 
 ```powershell
 irm https://raw.githubusercontent.com/qingchencloud/clawapp/main/install.ps1 | iex
 ```
 
-脚本会自动检测环境、克隆仓库、安装依赖、构建前端、交互式配置 Token，并支持 PM2 常驻运行。如果本地已安装 OpenClaw，会自动读取 Gateway Token。
+脚本会自动检测环境、克隆仓库、安装依赖、交互式配置 Token，并支持 PM2 常驻运行。如果本地已安装 OpenClaw，会自动读取 Gateway Token。
 
-### 前提条件
+#### 前提条件
 
 - 电脑上已运行 [OpenClaw](https://github.com/openclaw/openclaw) Gateway（默认端口 18789）
   - 推荐使用 [中文汉化版](https://github.com/1186258278/OpenClawChineseTranslation)
 - 安装了 [Node.js](https://nodejs.org/) 18+ 或 [Docker](https://www.docker.com/)
 
-### 方式一：Docker 部署（推荐）
+#### Docker 部署（推荐）
 
 ```bash
 git clone https://github.com/qingchencloud/clawapp.git
@@ -111,7 +120,7 @@ cd clawapp
 在项目根目录创建 `.env` 文件：
 
 ```bash
-# 手机连接时的密码（自己设一个）
+# APK 客户端连接时的密码（自己设一个）
 PROXY_TOKEN=my-secret-token-123
 
 # OpenClaw Gateway 的 Token（在 ~/.openclaw/gateway.yaml 里找）
@@ -124,27 +133,27 @@ OPENCLAW_GATEWAY_TOKEN=你的gateway-token
 docker compose up -d --build
 ```
 
-### 方式二：直接运行
+#### 直接运行
 
 ```bash
 git clone https://github.com/qingchencloud/clawapp.git
 cd clawapp
-npm run install:all
-npm run build:h5
+cd server && npm install
 cp server/.env.example server/.env
 # 编辑 server/.env，填入你的 token
 npm start
 ```
 
-### 手机访问
+### 第二步：安装 APK
 
-1. 确保手机和电脑在同一 WiFi
-2. 查看电脑 IP：
-   - Mac: `ifconfig | grep "inet " | grep -v 127.0.0.1`
-   - Windows: `ipconfig`
-   - Linux: `ip addr`
-3. 手机浏览器打开 `http://你的电脑IP:3210`
-4. 填入服务器地址和 Token，点击连接
+1. 在 GitHub 仓库的 [Actions 页面](https://github.com/candle233/clawapp/actions) 或 [Releases](https://github.com/candle233/clawapp/releases) 下载最新 APK
+2. 在 Android 手机上安装（需要允许"未知来源"）
+3. 打开 ClawApp，在连接设置页填入：
+   - **服务器地址**：代理服务端的 IP 或域名及端口，如 `192.168.1.100:3210`
+   - **Token**：`.env` 里设置的 `PROXY_TOKEN`
+4. 点击连接即可使用
+
+> 📖 **详细打包说明**（如何触发构建、本地手动打包、Release 签名、多种安装方法）请参阅 [docs/build-apk-guide.md](docs/build-apk-guide.md)
 
 ---
 
@@ -152,15 +161,14 @@ npm start
 
 ### 本地部署（同一网络）
 
-适合家庭/办公室使用，手机和电脑在同一 WiFi 下。
+适合家庭/办公室使用，APK 和服务器在同一 WiFi 下。
 
 ```bash
 git clone https://github.com/qingchencloud/clawapp.git
-cd clawapp && npm run install:all
-npm run build:h5
-cp server/.env.example server/.env
-# 编辑 server/.env 填入 token
-npm start
+cd clawapp/server && npm install
+cp .env.example .env
+# 编辑 .env 填入 token
+node index.js
 ```
 
 ### Docker 容器部署
@@ -281,7 +289,7 @@ server {
 
 <h2 id="connection">连接说明</h2>
 
-打开 H5 页面后会看到连接设置页：
+打开 ClawApp APK 后会看到连接设置页：
 
 | 字段 | 填什么 | 示例 |
 |------|--------|------|
@@ -290,13 +298,75 @@ server {
 
 > 💡 通过 HTTPS 访问时（如 Cloudflare Tunnel），WebSocket 会自动切换为 WSS 加密连接。
 
-### H5 客户端设置
+### APK 应用设置
 
 点击聊天页右上角 ⚙️ 图标：
 
 - **主题**：浅色 / 深色 / 跟随系统
 - **语言**：中文 / English
+- **自动播报**：AI 回复是否自动语音朗读
+- **语音识别后自动发送**：说完话是否立即发送
+- **免打扰**：设置不接受系统播报的时间段
+- **APK 常驻模式**：开启前台服务 + 唤醒词监听（详见 [APK 常驻模式](#apk-resident)）
 - **断开连接**：返回连接页
+
+---
+
+<h2 id="apk-resident">APK 常驻模式（Android 专属）</h2>
+
+ClawApp APK 版（通过 Capacitor 打包）支持**前台服务常驻**，可在 App 后台或锁屏时监听唤醒词 **"Claw Claw"**，实现免手动操作的语音对话。
+
+### 功能开关
+
+在 APK 中，设置面板（⚙️）底部会出现「APK 常驻模式」专属区域，包含：
+
+| 开关 | 说明 |
+|------|------|
+| 开启前台常驻服务 | 总开关，开启后 App 不会被系统回收 |
+| 唤醒词监听（说 "Claw Claw"）| 持续监听麦克风，检测到唤醒词后自动开始语音输入 |
+| AI 回复自动语音播报 | 收到 AI 回复后自动调用 TTS 朗读 |
+
+### 工作流程
+
+```
+说 "Claw Claw"（唤醒词）
+    ↓ Android SpeechRecognizer 检测到
+前台服务通知 JS 层
+    ↓ 触发语音输入按钮
+用户说出指令（语音识别）
+    ↓ 识别结果填入输入框 + 自动发送
+OpenClaw AI 回复
+    ↓ 自动 TTS 朗读
+继续等待下次唤醒
+```
+
+### Android 权限说明
+
+首次开启「前台常驻服务」时，App 会请求以下权限：
+
+| 权限 | 用途 | 级别 |
+|------|------|------|
+| `RECORD_AUDIO` | 麦克风录音（唤醒词 + 语音输入） | 运行时权限（需用户允许） |
+| `POST_NOTIFICATIONS` | 显示前台服务通知（Android 13+） | 运行时权限（需用户允许） |
+| `FOREGROUND_SERVICE` | 保持前台服务运行 | 普通权限（自动授予） |
+| `FOREGROUND_SERVICE_MICROPHONE` | API 34+ 声明服务使用麦克风 | 普通权限（自动授予） |
+| `WAKE_LOCK` | 锁屏时保持 CPU 唤醒 | 普通权限（自动授予） |
+| `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | 允许引导用户关闭电池优化 | 普通权限（自动授予） |
+
+### 电池优化设置（重要！）
+
+Android 的电池优化机制可能在 App 进入后台后**限制前台服务的麦克风访问**，导致唤醒词检测中断。建议：
+
+1. 在手机 **设置 → 应用 → ClawApp → 电池** 中，将电池使用模式改为 **「不受限制」**
+2. 部分品牌（如小米、OPPO、华为）还需要在**自启动管理**中允许 ClawApp 自启
+
+> ⚠️ 如果唤醒词经常无响应，基本上都是电池优化问题。请先检查上述设置。
+
+### 使用限制
+
+- 唤醒词检测依赖 Android 系统的 `SpeechRecognizer`，需要设备安装 Google 语音服务（或厂商语音引擎）
+- 锁屏状态下的持续识别受系统版本和厂商定制影响，效果可能因设备而异
+- 不支持离线唤醒词；识别需要网络连接
 
 ---
 
@@ -308,6 +378,7 @@ server {
 | `PROXY_TOKEN` | **是** | - | H5 客户端连接密码 |
 | `OPENCLAW_GATEWAY_URL` | 否 | `ws://127.0.0.1:18789` | Gateway 地址（Docker 下自动设为 `host.docker.internal`） |
 | `OPENCLAW_GATEWAY_TOKEN` | **是** | - | Gateway 认证 token |
+| `INGEST_TOKEN` | 否 | - | Cron 播报 Webhook 鉴权 token（`POST /ingest/cron`），未配置则不限制 |
 | `ALLOWED_ORIGINS` | 否 | - | 额外 CORS 白名单，逗号分隔 |
 
 ---
@@ -317,7 +388,7 @@ server {
 ```
 clawapp/
 ├── server/                # WebSocket 代理服务端
-│   ├── index.js           # Express + WS 代理 + Gateway 握手
+│   ├── index.js           # Express + WS 代理 + Gateway 握手 + /ingest/cron Webhook
 │   ├── package.json
 │   ├── Dockerfile
 │   └── .env.example
@@ -331,6 +402,10 @@ clawapp/
 │   │   ├── commands.js    # 快捷指令面板
 │   │   ├── markdown.js    # Markdown 渲染 + 代码高亮
 │   │   ├── media.js       # 图片处理
+│   │   ├── tts.js         # TTS 语音播报（Gateway RPC tts.convert）
+│   │   ├── voice-input.js # 语音输入（Web Speech API）
+│   │   ├── broadcast-center.js # 播报中心（Cron 推送 + DND）
+│   │   ├── native-mode.js # APK 常驻模式（Capacitor 桥接）
 │   │   ├── i18n.js        # 国际化（中文 / English）
 │   │   ├── theme.js       # 主题管理（亮/暗/自动）
 │   │   ├── settings.js    # 设置面板
@@ -339,6 +414,10 @@ clawapp/
 │   ├── index.html
 │   └── vite.config.js
 ├── android/               # Capacitor Android 项目
+│   └── app/src/main/java/com/qingchencloud/clawapp/
+│       ├── MainActivity.java
+│       ├── ClawPlugin.java        # Capacitor 插件（服务控制 + JS 事件）
+│       └── ClawForegroundService.java # 前台常驻服务 + 唤醒词检测
 ├── .github/workflows/     # GitHub Actions
 │   └── build-apk.yml      # 自动构建 APK
 ├── docs/                  # 文档 + GitHub Pages
@@ -480,6 +559,40 @@ ssh -f -N -L 127.0.0.1:18789:127.0.0.1:18789 user@你的电脑IP
 
 这样远程 ClawApp 就能通过 `ws://127.0.0.1:18789` 连接到你本地的 Gateway。
 
+**Q: 语音播报（TTS）没有声音？**
+
+1. 确认 OpenClaw Gateway 已配置 TTS 服务（`tts.convert` RPC 可用）
+2. 检查手机音量是否关闭或静音
+3. iOS Safari 需要用户交互后才能自动播放音频（点击播放按钮或开启"自动播报"后手动触发一次）
+4. 如果是网络请求失败，查看浏览器控制台是否有 `tts.convert` 错误
+
+**Q: 麦克风语音输入按钮不见了？**
+
+语音输入按钮仅在浏览器支持 `SpeechRecognition`（Web Speech API）时显示。
+
+- Chrome / Edge / Android WebView 支持较好
+- iOS Safari 需要 iOS 14.5+ 且需在 HTTPS 环境下使用（或 localhost）
+- 非 HTTPS 环境中麦克风权限会被浏览器拒绝，按钮会自动隐藏
+
+**Q: 如何使用 Cron 定时播报（天气/新闻/股票）？**
+
+1. 在 `server/.env` 中设置 `INGEST_TOKEN=your-ingest-token`（不设置则不限制来源）
+2. 在 OpenClaw 中配置 Cron 任务，将 `delivery.mode` 设为 `webhook`，`delivery.to` 设为：
+   ```
+   http://your-clawapp.example.com:3210/ingest/cron
+   ```
+3. 请求头加上 `X-Ingest-Token: your-ingest-token`（或用 `?token=xxx`）
+4. 收到推送后，H5 会弹出顶部通知卡片，并在「播报中心」（🔔 按钮）中记录
+5. 如需静默某段时间，在设置面板中开启「免打扰」并配置时间段
+
+**Q: APK 唤醒词 "Claw Claw" 没有响应？**
+
+1. **首先检查电池优化**（最常见原因）：设置 → 应用 → ClawApp → 电池 → 不受限制
+2. 部分品牌（小米/OPPO/华为）还需在「自启动管理」中允许 ClawApp
+3. 确认设置面板中「唤醒词监听」开关已开启
+4. 确认手机安装了 Google 语音服务（国内定制 ROM 可能需要单独安装）
+5. 唤醒词检测需要网络连接，请确认网络正常
+
 ---
 
 <h2 id="security">安全建议</h2>
@@ -526,9 +639,11 @@ ssh -f -N -L 127.0.0.1:18789:127.0.0.1:18789 user@你的电脑IP
 
 ### What is this?
 
-ClawApp is an H5 mobile chat client that lets you chat with your [OpenClaw](https://github.com/openclaw/openclaw) AI agent from any phone browser.
+ClawApp is an Android APK that lets you chat with your [OpenClaw](https://github.com/openclaw/openclaw) AI agent from your phone. Web browser access has been removed; the APK is the only supported client.
 
 ### Quick Start
+
+**Step 1 — Deploy the proxy server:**
 
 **Docker:**
 ```bash
@@ -542,12 +657,14 @@ docker compose up -d --build
 **Direct:**
 ```bash
 git clone https://github.com/qingchencloud/clawapp.git
-cd clawapp && npm run install:all && npm run build:h5
-cp server/.env.example server/.env  # edit tokens
-npm start
+cd clawapp/server && npm install
+cp .env.example .env  # edit tokens
+node index.js
 ```
 
-Open `http://your-ip:3210` on your phone.
+**Step 2 — Install the APK:**
+
+Download the latest APK from [GitHub Actions](https://github.com/candle233/clawapp/actions) or [Releases](https://github.com/candle233/clawapp/releases), install it on your Android phone, then enter your server address and token in the connection screen.
 
 ### Remote Access
 
@@ -555,9 +672,27 @@ Open `http://your-ip:3210` on your phone.
 - **SSH Tunnel**: `ssh -f -N -R 0.0.0.0:3210:localhost:3210 user@server`
 - **Nginx**: Configure WebSocket proxy to port 3210
 
+### Cron Broadcast Ingest
+
+```
+POST http://your-clawapp:3210/ingest/cron
+X-Ingest-Token: <INGEST_TOKEN>
+Content-Type: application/json
+
+{"title": "Weather", "text": "Sunny, 22°C"}
+```
+
+Set `INGEST_TOKEN` in `server/.env` to authenticate. Configure OpenClaw Cron with `delivery.mode=webhook` pointing to this endpoint.
+
 ### Features
 
 Real-time streaming chat, image send & receive, Markdown rendering, offline message cache (IndexedDB), Ed25519 device auth, session management, dark/light/auto theme, English/Chinese i18n, smart reconnect (no flicker), XSS protection, token auth.
+
+**New in this release:**
+- 🔊 **TTS playback** — per-message voice button + auto-play setting (Gateway `tts.convert` RPC)
+- 🎙️ **Voice input** — hold or tap mic button to dictate; fills textarea and optionally auto-sends (Web Speech API)
+- 📣 **Broadcast Center** — receive scheduled Cron broadcasts via `POST /ingest/cron`; bell badge, notification cards, Do Not Disturb time range, per-item TTS
+- 🤖 **APK resident mode** (Android only) — foreground service + "Claw Claw" wake word → voice input → AI reply → auto TTS
 
 </details>
 

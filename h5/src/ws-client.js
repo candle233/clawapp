@@ -275,6 +275,10 @@ export class WsClient {
     return this.request('sessions.reset', { key })
   }
 
+  ttsConvert(text) {
+    return this.request('tts.convert', { text })
+  }
+
   onEvent(callback) {
     this._eventListeners.push(callback)
     return () => { this._eventListeners = this._eventListeners.filter(fn => fn !== callback) }

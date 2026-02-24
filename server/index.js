@@ -2,9 +2,8 @@
  * ClawApp WebSocket 代理服务端
  * 
  * 功能：
- * - 接收来自 H5 客户端的 WebSocket 连接
+ * - 接收来自 APK 客户端的 WebSocket 连接
  * - 将消息透明转发到 OpenClaw Gateway
- * - 提供 H5 静态文件服务
  * - 支持 token 认证
  */
 
@@ -28,9 +27,9 @@ const __dirname = dirname(__filename);
 const CONFIG = {
   port: parseInt(process.env.PROXY_PORT, 10) || 3210,
   proxyToken: process.env.PROXY_TOKEN || '',
+  ingestToken: process.env.INGEST_TOKEN || '',
   gatewayUrl: process.env.OPENCLAW_GATEWAY_URL || 'ws://127.0.0.1:18789',
   gatewayToken: process.env.OPENCLAW_GATEWAY_TOKEN || '',
-  h5DistPath: join(__dirname, '../h5/dist'),
 };
 
 // Ed25519 设备密钥（OpenClaw 2.15+ device 认证）
@@ -64,6 +63,9 @@ const clients = new Map(); // clientId -> { downstream, upstream, state }
 
 // Express 应用
 const app = express();
+
+// 解析 JSON 请求体（用于 webhook 入口）
+app.use(express.json({ limit: '1mb' }));
 
 // CORS 中间件 - 支持 H5 开发模式 + 外部域名（Cloudflare Tunnel / 反向代理）
 app.use((req, res, next) => {
@@ -102,20 +104,122 @@ app.get('/health', (req, res) => {
       gatewayUrl: CONFIG.gatewayUrl,
       hasProxyToken: !!CONFIG.proxyToken,
       hasGatewayToken: !!CONFIG.gatewayToken,
+      hasIngestToken: !!CONFIG.ingestToken,
     }
   });
 });
 
-// 静态文件服务（H5 构建产物）
-app.use(express.static(CONFIG.h5DistPath));
+/**
+ * 校验 Ingest Token（请求头 X-Ingest-Token 或 query ?token=）
+ */
+function validateIngestToken(req) {
+  if (!CONFIG.ingestToken) return true; // 未配置时不限制
+  const header = req.headers['x-ingest-token'];
+  const query = req.query.token;
+  return header === CONFIG.ingestToken || query === CONFIG.ingestToken;
+}
 
-// 所有其他路由返回 index.html（SPA 支持）
-app.get('*', (req, res) => {
-  res.sendFile(join(CONFIG.h5DistPath, 'index.html'), (err) => {
-    if (err) {
-      res.status(404).send('Not Found');
+/**
+ * 向所有已连接的下游 H5 客户端广播消息
+ */
+function broadcastToAll(event, data) {
+  let count = 0;
+  for (const [, client] of clients) {
+    if (sendMessage(client.downstream, { type: 'event', event, data })) count++;
+  }
+  return count;
+}
+
+/**
+ * 处理 broadcast.sync RPC（客户端本地广播，不转发 Gateway）
+ * 把消息发给所有其他下游客户端并回复 receipt
+ */
+function handleBroadcastSync(sourceClientId, frame) {
+  const params = frame.params || {};
+  const title = String(params.title || '').substring(0, 200);
+  const text = String(params.text || params.body || '').substring(0, 2000);
+  const timestamp = Date.now();
+
+  let delivered = 0;
+  for (const [cid, c] of clients) {
+    if (cid !== sourceClientId) {
+      if (sendMessage(c.downstream, { type: 'event', event: 'proxy.sync', data: { title, text, timestamp } })) {
+        delivered++;
+      }
     }
+  }
+
+  const sourceClient = clients.get(sourceClientId);
+  if (!sourceClient) return;
+  sendMessage(sourceClient.downstream, {
+    type: 'res',
+    id: frame.id,
+    ok: true,
+    payload: { delivered, total: clients.size - 1, timestamp },
   });
+  // Sanitize title before logging to avoid log injection
+  const safeTitle = title.replace(/[\r\n]/g, ' ').substring(0, 40);
+  log.info(`broadcast.sync [${sourceClientId}] → ${delivered}/${clients.size - 1} 设备 title="${safeTitle}"`);
+}
+
+/**
+ * 通过第一个已连接的上游连接向 Gateway 发送 chat.inject
+ */
+function injectToGateway(text, sessionKey) {
+  const sk = sessionKey || 'agent:main:main';
+  for (const [, client] of clients) {
+    if (client.state === 'connected' && client.upstream) {
+      const frame = {
+        type: 'req',
+        id: `inject-${randomUUID()}`,
+        method: 'chat.inject',
+        params: { sessionKey: sk, role: 'assistant', content: text, deliver: false },
+      };
+      if (sendMessage(client.upstream, frame)) {
+        log.info(`chat.inject 已发送 sessionKey=${sk}`);
+        return true;
+      }
+    }
+  }
+  log.warn('chat.inject 跳过：没有已连接的上游');
+  return false;
+}
+
+/**
+ * Cron 投递 Webhook 入口
+ * POST /ingest/cron
+ * Auth: X-Ingest-Token 请求头 或 ?token= query
+ */
+app.post('/ingest/cron', (req, res) => {
+  if (!validateIngestToken(req)) {
+    log.warn(`/ingest/cron 认证失败 from ${req.socket.remoteAddress}`);
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const body = req.body || {};
+  // 从 payload 中提取播报文本（不暴露执行细节）
+  const title = (typeof body.title === 'string' ? body.title : '').substring(0, 200);
+  const text = (
+    body.text ?? body.body ?? body.result ?? body.content ??
+    body.message ?? body.output ?? ''
+  );
+  const broadcastText = typeof text === 'string' ? text : JSON.stringify(text);
+  const timestamp = typeof body.timestamp === 'number' ? body.timestamp : Date.now();
+
+  if (!broadcastText && !title) {
+    return res.status(400).json({ error: 'empty payload' });
+  }
+
+  // 只向前端发送净化后的播报数据
+  const pushData = { title, body: broadcastText, timestamp };
+  const count = broadcastToAll('proxy.push', pushData);
+  log.info(`/ingest/cron 广播到 ${count} 个客户端 title="${(title || '(无标题)').substring(0, 40)}"`);
+
+  // 可选：注入到 Gateway 聊天记录
+  const injectText = [title, broadcastText].filter(Boolean).join('\n');
+  injectToGateway(injectText, body.sessionKey || null);
+
+  res.json({ ok: true, delivered: count });
 });
 
 // HTTP 服务器
@@ -404,7 +508,15 @@ wss.on('connection', (ws, req) => {
 
     const msgStr = data.toString()
     log.debug(`下游消息 [${clientId}]: ${msgStr.substring(0, 80)}...`);
-    
+
+    // broadcast.sync 由代理本地处理，不转发到 Gateway
+    let parsed;
+    try { parsed = JSON.parse(msgStr); } catch { parsed = null; }
+    if (parsed?.type === 'req' && parsed?.method === 'broadcast.sync') {
+      handleBroadcastSync(clientId, parsed);
+      return;
+    }
+
     // 透传给上游
     sendMessage(client.upstream, msgStr);
   });
@@ -458,7 +570,7 @@ server.listen(CONFIG.port, '0.0.0.0', () => {
   log.info(`- 监听地址: 0.0.0.0:${CONFIG.port}`);
   log.info(`- WebSocket 路径: /ws?token=xxx`);
   log.info(`- Gateway 地址: ${CONFIG.gatewayUrl}`);
-  log.info(`- H5 静态目录: ${CONFIG.h5DistPath}`);
   log.info(`- 健康检查: http://localhost:${CONFIG.port}/health`);
+  log.info(`- Cron 入口: POST http://localhost:${CONFIG.port}/ingest/cron (X-Ingest-Token)`);
   log.info(`- Device ID: ${deviceKey.deviceId.substring(0, 16)}...`);
 });

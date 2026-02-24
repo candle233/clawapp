@@ -1,10 +1,19 @@
 import { wsClient, uuid } from './ws-client.js'
 import { renderMarkdown } from './markdown.js'
-import { initMedia, pickImage, getAttachments, clearAttachments, hasAttachments, showLightbox } from './media.js'
+import { initMedia, pickImage, getAttachments, getDisplayAttachments, getVideoContext, clearAttachments, hasAttachments, showLightbox } from './media.js'
 import { initCommands, showCommands } from './commands.js'
 import { t, formatRelativeTime } from './i18n.js'
 import { initSettings, showSettings } from './settings.js'
 import { saveMessage, saveMessages, getLocalMessages, clearSessionMessages, isStorageAvailable, saveSessionInfo } from './message-db.js'
+import { addTtsButton, getTtsAuto } from './tts.js'
+import { initBroadcastCenter, handlePushEvent, showBroadcastCenter, resetUnread } from './broadcast-center.js'
+import { initVoiceInput, isSpeechSupported, getVoiceAutoSend } from './voice-input.js'
+import { initNativeMode, isNative } from './native-mode.js'
+import { buildMemoryContext, showMemoryPanel } from './memory.js'
+import { wrapTaskMessage, createStepTracker, updateStepTracker } from './task-planner.js'
+import { trackMessage, buildPersonaContext } from './persona.js'
+import { syncToDevices, handleSyncEvent } from './sync-center.js'
+import { buildDeviceCapabilitiesContext, parseDeviceMarkers, executeDeviceAction, isDeviceSensitiveAction, getDeviceCtlEnabled, stripDeviceMarkers } from './device-control.js'
 
 const STORAGE_SESSION_KEY = 'clawapp-session-key'
 
@@ -28,11 +37,19 @@ let _renderTimer = null    // 节流渲染定时器
 let _renderPending = false // 是否有待渲染
 const RENDER_THROTTLE = 30 // 渲染节流间隔 ms
 
+// Task planner state
+let _isTaskMode = false        // 当前是否为任务规划消息
+let _currentTaskTracker = null // 当前步骤追踪卡片元素
+
 const SVG_SEND = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>`
 const SVG_ATTACH = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>`
 const SVG_CMD = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg>`
 const SVG_SETTINGS = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`
 const SVG_STOP = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`
+const SVG_BELL = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>`
+const SVG_MIC = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`
+const SVG_MEMORY = `<svg width="18" height="18" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M27.2 10.6a5 5 0 00-7.2-4.5A6 6 0 008 11a4 4 0 00.7 7.9 4 4 0 003.3 6A5 5 0 0018 28a5 5 0 006-4.9 4 4 0 003-6.4 4 4 0 00.2-6z"/><line x1="18" y1="13" x2="18" y2="22"/><line x1="14" y1="17" x2="22" y2="17"/></svg>`
+const SVG_SYNC = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>`
 
 /** 从 OpenClaw 消息中提取可渲染内容（文本 + 图片） */
 function extractContent(message) {
@@ -54,13 +71,26 @@ function extractContent(message) {
   return null
 }
 
+/** 从消息中提取原始（未剥离标记的）文本，用于设备动作解析 */
+function extractRawTextContent(message) {
+  if (!message || typeof message !== 'object') return ''
+  const content = message.content
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content.filter(b => b.type === 'text' && typeof b.text === 'string').map(b => b.text).join('\n')
+  }
+  if (typeof message.text === 'string') return message.text
+  return ''
+}
+
 function stripThinkingTags(text) {
-  return text
-    .replace(/<\s*think(?:ing)?\s*>[\s\S]*?<\s*\/\s*think(?:ing)?\s*>/gi, '')
-    // 过滤 OpenClaw 注入的元数据（Conversation info / Inbound Context）
-    .replace(/Conversation info \(untrusted metadata\):\s*```json[\s\S]*?```\s*/gi, '')
-    .replace(/\[Queued messages while agent was busy\]\s*---\s*Queued #\d+\s*/gi, '')
-    .trim()
+  return stripDeviceMarkers(
+    text
+      .replace(/<\s*think(?:ing)?\s*>[\s\S]*?<\s*\/\s*think(?:ing)?\s*>/gi, '')
+      // 过滤 OpenClaw 注入的元数据（Conversation info / Inbound Context）
+      .replace(/Conversation info \(untrusted metadata\):\s*```json[\s\S]*?```\s*/gi, '')
+      .replace(/\[Queued messages while agent was busy\]\s*---\s*Queued #\d+\s*/gi, '')
+  ).trim()
 }
 
 export function createChatPage() {
@@ -71,6 +101,8 @@ export function createChatPage() {
     <div class="chat-header">
       <div class="status-dot" id="status-dot"></div>
       <div class="title" id="session-title">ClawApp</div>
+      <button class="settings-btn" id="broadcast-btn" title="${t('broadcast.title')}">${SVG_BELL}<span class="broadcast-badge" id="broadcast-badge" hidden></span></button>
+      <button class="settings-btn" id="memory-btn" title="${t('memory.title')}">${SVG_MEMORY}</button>
       <button class="settings-btn" id="settings-btn">${SVG_SETTINGS}</button>
     </div>
     <div class="chat-messages" id="chat-messages">
@@ -82,6 +114,7 @@ export function createChatPage() {
       <button class="icon-btn" id="cmd-btn">${SVG_CMD}</button>
       <button class="icon-btn" id="attach-btn">${SVG_ATTACH}</button>
       <div class="input-wrapper"><textarea id="chat-input" rows="1" placeholder="${t('chat.input.placeholder')}"></textarea></div>
+      <button class="icon-btn voice-btn" id="voice-btn" title="${t('voice.start')}">${SVG_MIC}</button>
       <button class="send-btn" id="send-btn" disabled>${SVG_SEND}</button>
     </div>
   `
@@ -119,11 +152,38 @@ export function initChatUI(onSettings) {
   initMedia(_previewBar, updateSendState)
   initSettings(onSettings)
 
+  // 播报中心 badge 回调
+  const badgeEl = document.getElementById('broadcast-badge')
+  initBroadcastCenter((count) => {
+    if (badgeEl) {
+      if (count > 0) { badgeEl.textContent = count > 99 ? '99+' : count; badgeEl.hidden = false }
+      else { badgeEl.hidden = true }
+    }
+  })
+
+  document.getElementById('broadcast-btn').onclick = () => showBroadcastCenter()
+  document.getElementById('memory-btn').onclick = () => showMemoryPanel()
   document.getElementById('settings-btn').onclick = () => showSettings()
   document.getElementById('session-title').onclick = () => showSessionPicker()
   document.getElementById('cmd-btn').onclick = () => showCommands()
   document.getElementById('attach-btn').onclick = () => pickImage()
   _sendBtn.onclick = () => handleSendClick()
+
+  // 语音输入按钮
+  const voiceBtn = document.getElementById('voice-btn')
+  initVoiceInput(
+    voiceBtn,
+    _textarea,
+    (text) => {
+      // 填入文本后触发 resize 和状态更新
+      autoResize()
+      updateSendState()
+    },
+    () => {
+      // 自动发送
+      if (getVoiceAutoSend()) handleSendClick()
+    }
+  )
 
   _textarea.addEventListener('input', () => { autoResize(); updateSendState() })
   _textarea.addEventListener('keydown', (e) => {
@@ -149,6 +209,17 @@ export function initChatUI(onSettings) {
       showDisconnectBanner(false)
     }
   })
+
+  // 常驻模式（APK 专属）— 唤醒词检测到时触发语音输入
+  if (isNative()) {
+    initNativeMode(() => {
+      const voiceBtn = document.getElementById('voice-btn')
+      if (voiceBtn && voiceBtn.style.display !== 'none') {
+        // 触发麦克风按钮的点击（已有语音输入模块处理后续）
+        voiceBtn.click()
+      }
+    })
+  }
 }
 
 function autoResize() {
@@ -178,31 +249,76 @@ function handleSendClick() {
   sendMessage()
 }
 
+/**
+ * 供 native-mode 调用的公共发送接口
+ * 将文本填入输入框并触发发送
+ * @param {string} text - 要发送的消息文本
+ */
+export function sendTextMessage(text) {
+  if (!text || !_textarea) return
+  _textarea.value = text
+  autoResize()
+  updateSendState()
+  sendMessage()
+}
+
 async function sendMessage() {
   const text = _textarea.value.trim()
   if (!text && !hasAttachments()) return
 
   const attachments = getAttachments()
+  const displayAtts  = getDisplayAttachments()
+  const videoCtx     = getVideoContext()
   _textarea.value = ''
   _textarea.style.height = 'auto'
   clearAttachments()
   updateSendState()
 
+  // 检查是否为任务规划模式（/task 前缀）
+  const TASK_PREFIX = '/task '
+  if (text.startsWith(TASK_PREFIX)) {
+    const taskDesc = text.slice(TASK_PREFIX.length).trim()
+    if (taskDesc) {
+      _isTaskMode = true
+      // 用户气泡显示原始任务描述，AI 收到包装后的提示词
+      if (_isSending || _isStreaming) {
+        _messageQueue.push({ text: taskDesc, rawSend: wrapTaskMessage(taskDesc), attachments, displayAtts })
+        return
+      }
+      await doSend(taskDesc, attachments, wrapTaskMessage(taskDesc), displayAtts)
+      return
+    }
+  }
+
+  // 检查是否为跨设备同步模式（/sync 前缀）
+  const SYNC_PREFIX = '/sync '
+  if (text.startsWith(SYNC_PREFIX)) {
+    const syncText = text.slice(SYNC_PREFIX.length).trim()
+    if (syncText) {
+      appendUserMessage(syncText)  // show only the content, not the /sync prefix
+      doSync(syncText)
+      return
+    }
+  }
+
+  _isTaskMode = false
+
   // 如果正在发送或流式响应中，加入队列
   if (_isSending || _isStreaming) {
-    _messageQueue.push({ text, attachments })
+    _messageQueue.push({ text, attachments, displayAtts, videoCtx })
     // 不再这里 append，等发送时统一处理
     return
   }
 
-  await doSend(text, attachments)
+  await doSend(text, attachments, null, displayAtts, videoCtx)
 }
 
 /** 实际发送消息 */
-async function doSend(text, attachments) {
-  if (text) {
+async function doSend(text, attachments, rawSend, displayAtts, videoCtx) {
+  const showAtts = displayAtts || attachments
+  if (text || showAtts?.length) {
     console.log('[chat] appendUserMessage:', text.substring(0, 50))
-    appendUserMessage(text, attachments)
+    appendUserMessage(text, showAtts)
     // 保存用户消息到本地（含附件）
     saveMessage({ id: uuid(), sessionKey: _sessionKey, role: 'user', content: text, attachments: attachments?.length ? attachments : undefined, timestamp: Date.now() })
   }
@@ -210,8 +326,20 @@ async function doSend(text, attachments) {
   _isSending = true
   _textarea.disabled = true
 
+  // 注入上下文：视频分析说明 → 设备控制能力 → 个性化推荐 → 长期记忆
+  const memCtx     = buildMemoryContext()
+  const personaCtx = buildPersonaContext()
+  const deviceCtx  = buildDeviceCapabilitiesContext()
+  const prefix     = [videoCtx, deviceCtx, personaCtx, memCtx].filter(Boolean).join('')
+  const textToSend = rawSend || (prefix ? prefix + (text || '') : (text || ''))
+
+  // 追踪话题频次:
+  // - 跳过 rawSend 模式（任务规划消息已包装，不应重复计数原始话题）
+  // - 跳过空文本（无话题可检测）
+  if (!rawSend && text) trackMessage(text)
+
   try {
-    await wsClient.chatSend(_sessionKey, text, attachments.length ? attachments : undefined)
+    await wsClient.chatSend(_sessionKey, textToSend, attachments.length ? attachments : undefined)
   } catch (err) {
     showTyping(false)
     if (err.message.includes('未连接') || err.message.includes('超时') || err.message.includes('重连') || err.message.includes('timeout') || err.message.includes('reconnect')) {
@@ -226,11 +354,141 @@ async function doSend(text, attachments) {
   }
 }
 
-/** 处理队列中的下一条消息（在 final/error/aborted 后调用） */
+/** 跨设备同步：发送同步消息并显示 receipt 卡片 */
+async function doSync(text) {
+  const title = t('sync.title')
+  try {
+    const result = await syncToDevices(title, text)
+    appendSyncCard('sent', { text, delivered: result.delivered, total: result.total, timestamp: result.timestamp })
+  } catch (err) {
+    appendSyncCard('error', { text, error: err.message })
+  }
+}
+
+/** 渲染同步卡片（发送 receipt 或接收通知） */
+function appendSyncCard(type, data) {
+  const wrapper = document.createElement('div')
+  wrapper.className = 'msg system-msg-wrap'
+  const card = document.createElement('div')
+  card.className = `sync-card sync-card--${type}`
+
+  if (type === 'sent') {
+    const n = data.delivered ?? 0
+    const total = data.total ?? 0
+    const deliveryLabel = n > 0 ? t('sync.sent', { n }) : t('sync.sent.none')
+    const totalLabel = total > 0 ? ` / ${t('sync.receipt.total')} ${total}` : ''
+    card.innerHTML = `
+      <div class="sync-card-icon">${SVG_SYNC}</div>
+      <div class="sync-card-content">
+        <div class="sync-card-title">${t('sync.title')}</div>
+        <div class="sync-card-body">${escapeText(data.text)}</div>
+        <div class="sync-card-status sync-card-status--ok">${deliveryLabel}${totalLabel}</div>
+      </div>`
+  } else if (type === 'incoming') {
+    card.innerHTML = `
+      <div class="sync-card-icon">${SVG_SYNC}</div>
+      <div class="sync-card-content">
+        <div class="sync-card-title">${escapeText(data.title || t('sync.received'))}</div>
+        <div class="sync-card-body">${escapeText(data.text || '')}</div>
+        <div class="sync-card-status">${t('sync.received')}</div>
+      </div>`
+  } else {
+    card.innerHTML = `
+      <div class="sync-card-icon">${SVG_SYNC}</div>
+      <div class="sync-card-content">
+        <div class="sync-card-title">${t('sync.title')}</div>
+        <div class="sync-card-status sync-card-status--err">${escapeText(data.error || t('sync.error'))}</div>
+      </div>`
+  }
+
+  wrapper.appendChild(card)
+  _messagesEl.insertBefore(wrapper, _typingEl)
+  scrollToBottom()
+}
+
+/**
+ * 执行 AI 回复中解析到的设备动作。
+ * 非敏感动作直接执行并显示结果；敏感动作显示确认卡片。
+ */
+async function _processDeviceActions(actions, confirms) {
+  for (const { action, params } of actions) {
+    if (!isDeviceSensitiveAction(action)) {
+      try {
+        const result = await executeDeviceAction(action, params)
+        if (result) _appendDeviceResultChip(result)
+      } catch (err) {
+        console.warn('[device] action failed:', action, err)
+        _appendDeviceResultChip(t('device.error.not_supported'))
+      }
+    }
+  }
+  for (const { action, params } of confirms) {
+    _appendDeviceConfirmCard(action, params)
+  }
+}
+
+/** 显示设备动作执行结果小标签 */
+function _appendDeviceResultChip(text) {
+  const wrap = document.createElement('div')
+  wrap.className = 'msg system-msg-wrap'
+  const chip = document.createElement('div')
+  chip.className = 'device-result-chip'
+  chip.textContent = text
+  wrap.appendChild(chip)
+  _messagesEl.insertBefore(wrap, _typingEl)
+  scrollToBottom()
+}
+
+/** 显示敏感操作确认卡片 */
+function _appendDeviceConfirmCard(action, params) {
+  const wrap = document.createElement('div')
+  wrap.className = 'msg system-msg-wrap'
+  const card = document.createElement('div')
+  card.className = 'device-confirm-card'
+  const actionLabel = action + (params ? `:${params}` : '')
+  card.innerHTML = `
+    <div class="device-confirm-icon">🔐</div>
+    <div class="device-confirm-content">
+      <div class="device-confirm-title">${t('device.confirm.title')}</div>
+      <div class="device-confirm-action">${escapeText(actionLabel)}</div>
+    </div>
+    <div class="device-confirm-btns">
+      <button class="device-confirm-btn device-confirm-btn--allow">${t('device.confirm.btn')}</button>
+      <button class="device-confirm-btn device-confirm-btn--deny">${t('device.confirm.cancel')}</button>
+    </div>`
+  wrap.appendChild(card)
+  _messagesEl.insertBefore(wrap, _typingEl)
+  scrollToBottom()
+
+  card.querySelector('.device-confirm-btn--allow').onclick = async () => {
+    const btnsEl = card.querySelector('.device-confirm-btns')
+    btnsEl.innerHTML = '<span class="device-confirm-pending">…</span>'
+    try {
+      const result = await executeDeviceAction(action, params)
+      btnsEl.innerHTML = `<span class="device-confirm-result">${escapeText(result)}</span>`
+    } catch (err) {
+      console.warn('[device] sensitive action failed:', action, err)
+      btnsEl.innerHTML = `<span class="device-confirm-result device-confirm-result--err">${escapeText(t('device.error.not_supported'))}</span>`
+    }
+  }
+  card.querySelector('.device-confirm-btn--deny').onclick = () => wrap.remove()
+}
+
+
 function processMessageQueue() {
   if (_messageQueue.length === 0) return
   if (_isSending || _isStreaming) return
   const next = _messageQueue.shift()
+  // 处理任务规划消息
+  if (next.rawSend) {
+    _isTaskMode = true
+    doSend(next.text, next.attachments || [], next.rawSend, next.displayAtts).catch(err => {
+      showTyping(false)
+      appendSystemMessage(`${t('chat.send.error')}: ${err.message}`)
+    })
+    return
+  }
+  _isTaskMode = false
   // 用户消息已经在入队时 append 过了，这里不再 append
   showTyping(true)
   _isSending = true
@@ -252,6 +510,8 @@ function handleEvent(msg) {
   const { event, payload } = msg
   if (event === 'chat') handleChatEvent(payload)
   else if (event === 'agent') handleAgentEvent(payload)
+  else if (event === 'proxy.push') handlePushEvent(msg.data || payload)
+  else if (event === 'proxy.sync') handleSyncEvent(msg.data || payload, (d) => appendSyncCard(d.type, d))
 }
 
 function handleChatEvent(payload) {
@@ -281,6 +541,18 @@ function handleChatEvent(payload) {
     // 忽略空 final（Gateway 会为一条消息触发多个 run，部分是空 final）
     if (!_currentAiBubble && !finalText && !finalImages.length) return
     showTyping(false)
+
+    // 在显示前从原始文本中提取设备动作标记
+    if (getDeviceCtlEnabled()) {
+      const rawText = extractRawTextContent(payload.message)
+      if (rawText) {
+        const { actions, confirms } = parseDeviceMarkers(rawText)
+        if (actions.length || confirms.length) {
+          setTimeout(() => _processDeviceActions(actions, confirms), 100)
+        }
+      }
+    }
+
     // 如果流式阶段没有创建 bubble，从 final message 中提取
     if (!_currentAiBubble && (finalText || finalImages.length)) {
       _currentAiBubble = createAiBubble()
@@ -303,6 +575,12 @@ function handleChatEvent(payload) {
     // 保存 AI 回复到本地
     if (_currentAiText) {
       saveMessage({ id: payload.runId || uuid(), sessionKey: _sessionKey, role: 'assistant', content: _currentAiText, timestamp: Date.now() })
+    }
+    // 添加 TTS 播放按钮，并在开启自动播报时触发
+    if (wrapper && _currentAiText) {
+      const ttsText = _currentAiText
+      const ttsBtn = addTtsButton(wrapper, ttsText)
+      if (getTtsAuto()) ttsBtn.click()
     }
     resetStreamState()
     processMessageQueue()
@@ -397,6 +675,10 @@ function resetStreamState() {
     bindImageClicks(_currentAiBubble)
     scrollToBottom()
   }
+  // 任务规划模式：最终更新追踪器
+  if (_isTaskMode && _currentTaskTracker && _currentAiText) {
+    updateStepTracker(_currentTaskTracker, _currentAiText)
+  }
   _renderPending = false
   _lastRenderTime = 0
   _currentAiBubble = null
@@ -405,6 +687,8 @@ function resetStreamState() {
   _currentRunId = null
   _isStreaming = false
   _toolCards.clear()
+  _isTaskMode = false
+  _currentTaskTracker = null
   updateSendState()
 }
 
@@ -435,6 +719,10 @@ function doRender() {
     _currentAiBubble.innerHTML = renderMarkdown(_currentAiText)
     scrollToBottom()
   }
+  // 任务规划模式：实时更新步骤追踪器
+  if (_isTaskMode && _currentTaskTracker && _currentAiText) {
+    updateStepTracker(_currentTaskTracker, _currentAiText)
+  }
 }
 
 function createAiBubble(msgTime) {
@@ -443,6 +731,12 @@ function createAiBubble(msgTime) {
   const bubble = document.createElement('div')
   bubble.className = 'msg-bubble'
   
+  // 任务规划模式：在气泡前插入步骤追踪卡片
+  if (_isTaskMode) {
+    _currentTaskTracker = createStepTracker()
+    wrapper.appendChild(_currentTaskTracker)
+  }
+
   // 添加光标
   const cursor = document.createElement('span')
   cursor.className = 'typing-cursor'
@@ -494,8 +788,15 @@ function appendUserMessage(text, attachments, msgTime) {
   let html = escapeText(text).replace(/\n/g, '<br>')
   if (attachments?.length) {
     attachments.forEach(att => {
-      const src = att.data || (att.content ? `data:${att.mimeType};base64,${att.content}` : '')
-      if (src) html += `<br><img src="${src}" alt="attachment" class="msg-img" />`
+      if (att.type === 'video') {
+        // Show video card with thumbnail + play icon
+        const thumbStyle = att.thumbnail ? ` style="background-image:url(${att.thumbnail})"` : ''
+        const durStr = att.duration > 0 ? ` <span class="msg-video-dur">${Math.round(att.duration)}s · ${att.frameCount}${t('media.video.frames')}</span>` : ''
+        html += `<br><div class="msg-video-card"${thumbStyle}><span class="msg-video-play">▶</span><span class="msg-video-filename">${escapeText(att.name)}${durStr}</span></div>`
+      } else {
+        const src = att.data || (att.content ? `data:${att.mimeType};base64,${att.content}` : '')
+        if (src) html += `<br><img src="${src}" alt="attachment" class="msg-img" />`
+      }
     })
   }
   bubble.innerHTML = html
@@ -528,6 +829,7 @@ function appendAiMessage(text, msgTime, images) {
   
   wrapper.appendChild(bubble)
   wrapper.appendChild(time)
+  if (text) addTtsButton(wrapper, text)
   _messagesEl.insertBefore(wrapper, _typingEl)
   scrollToBottom()
 }

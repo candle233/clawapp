@@ -10,6 +10,7 @@ import { isSpeechSupported, getVoiceAutoSend, setVoiceAutoSend } from './voice-i
 import { isNative, getNativeSettings, setNativeSettings, applyNativeSettings } from './native-mode.js'
 import { getMemoryEnabled, setMemoryEnabled } from './memory.js'
 import { getPersonaEnabled, setPersonaEnabled, resetPersonaStats, getTopicStats } from './persona.js'
+import { getDeviceCtlEnabled, setDeviceCtlEnabled } from './device-control.js'
 
 let _onDisconnect = null
 
@@ -105,6 +106,19 @@ export function showSettings() {
         </div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.5">${t('persona.settings.hint')}</div>
         <div id="persona-stats"></div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-label">${t('device.settings.label')}</div>
+        <div class="settings-toggle-group" id="device-ctl-toggle">
+          <button class="settings-toggle ${getDeviceCtlEnabled() ? '' : 'active'}" data-value="off">
+            ${t('device.settings.off')}
+          </button>
+          <button class="settings-toggle ${getDeviceCtlEnabled() ? 'active' : ''}" data-value="on">
+            ${t('device.settings.on')}
+          </button>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.5">${t('device.settings.hint')}</div>
       </div>
 
       ${isSpeechSupported() ? `
@@ -220,6 +234,16 @@ export function showSettings() {
 
   // 个性化推荐：话题统计面板
   renderPersonaStats(panel.querySelector('#persona-stats'))
+
+  // 设备控制开关
+  panel.querySelectorAll('#device-ctl-toggle .settings-toggle').forEach(btn => {
+    btn.onclick = () => {
+      const value = btn.dataset.value === 'on'
+      setDeviceCtlEnabled(value)
+      panel.querySelectorAll('#device-ctl-toggle .settings-toggle').forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+    }
+  })
 
   // 语音自动发送
   if (isSpeechSupported()) {

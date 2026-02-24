@@ -13,6 +13,7 @@ import { buildMemoryContext, showMemoryPanel } from './memory.js'
 import { wrapTaskMessage, createStepTracker, updateStepTracker } from './task-planner.js'
 import { trackMessage, buildPersonaContext } from './persona.js'
 import { syncToDevices, handleSyncEvent } from './sync-center.js'
+import { buildDeviceCapabilitiesContext, parseDeviceMarkers, executeDeviceAction, isDeviceSensitiveAction, getDeviceCtlEnabled, stripDeviceMarkers } from './device-control.js'
 
 const STORAGE_SESSION_KEY = 'clawapp-session-key'
 
@@ -70,13 +71,26 @@ function extractContent(message) {
   return null
 }
 
+/** 从消息中提取原始（未剥离标记的）文本，用于设备动作解析 */
+function extractRawTextContent(message) {
+  if (!message || typeof message !== 'object') return ''
+  const content = message.content
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content.filter(b => b.type === 'text' && typeof b.text === 'string').map(b => b.text).join('\n')
+  }
+  if (typeof message.text === 'string') return message.text
+  return ''
+}
+
 function stripThinkingTags(text) {
-  return text
-    .replace(/<\s*think(?:ing)?\s*>[\s\S]*?<\s*\/\s*think(?:ing)?\s*>/gi, '')
-    // 过滤 OpenClaw 注入的元数据（Conversation info / Inbound Context）
-    .replace(/Conversation info \(untrusted metadata\):\s*```json[\s\S]*?```\s*/gi, '')
-    .replace(/\[Queued messages while agent was busy\]\s*---\s*Queued #\d+\s*/gi, '')
-    .trim()
+  return stripDeviceMarkers(
+    text
+      .replace(/<\s*think(?:ing)?\s*>[\s\S]*?<\s*\/\s*think(?:ing)?\s*>/gi, '')
+      // 过滤 OpenClaw 注入的元数据（Conversation info / Inbound Context）
+      .replace(/Conversation info \(untrusted metadata\):\s*```json[\s\S]*?```\s*/gi, '')
+      .replace(/\[Queued messages while agent was busy\]\s*---\s*Queued #\d+\s*/gi, '')
+  ).trim()
 }
 
 export function createChatPage() {
@@ -312,10 +326,11 @@ async function doSend(text, attachments, rawSend, displayAtts, videoCtx) {
   _isSending = true
   _textarea.disabled = true
 
-  // 注入上下文：视频分析说明 → 个性化推荐 → 长期记忆
+  // 注入上下文：视频分析说明 → 设备控制能力 → 个性化推荐 → 长期记忆
   const memCtx     = buildMemoryContext()
   const personaCtx = buildPersonaContext()
-  const prefix     = [videoCtx, personaCtx, memCtx].filter(Boolean).join('')
+  const deviceCtx  = buildDeviceCapabilitiesContext()
+  const prefix     = [videoCtx, deviceCtx, personaCtx, memCtx].filter(Boolean).join('')
   const textToSend = rawSend || (prefix ? prefix + (text || '') : (text || ''))
 
   // 追踪话题频次:
@@ -391,7 +406,75 @@ function appendSyncCard(type, data) {
   scrollToBottom()
 }
 
-/** 处理队列中的下一条消息（在 final/error/aborted 后调用） */
+/**
+ * 执行 AI 回复中解析到的设备动作。
+ * 非敏感动作直接执行并显示结果；敏感动作显示确认卡片。
+ */
+async function _processDeviceActions(actions, confirms) {
+  for (const { action, params } of actions) {
+    if (!isDeviceSensitiveAction(action)) {
+      try {
+        const result = await executeDeviceAction(action, params)
+        if (result) _appendDeviceResultChip(result)
+      } catch (err) {
+        console.warn('[device] action failed:', action, err)
+        _appendDeviceResultChip(t('device.error.not_supported'))
+      }
+    }
+  }
+  for (const { action, params } of confirms) {
+    _appendDeviceConfirmCard(action, params)
+  }
+}
+
+/** 显示设备动作执行结果小标签 */
+function _appendDeviceResultChip(text) {
+  const wrap = document.createElement('div')
+  wrap.className = 'msg system-msg-wrap'
+  const chip = document.createElement('div')
+  chip.className = 'device-result-chip'
+  chip.textContent = text
+  wrap.appendChild(chip)
+  _messagesEl.insertBefore(wrap, _typingEl)
+  scrollToBottom()
+}
+
+/** 显示敏感操作确认卡片 */
+function _appendDeviceConfirmCard(action, params) {
+  const wrap = document.createElement('div')
+  wrap.className = 'msg system-msg-wrap'
+  const card = document.createElement('div')
+  card.className = 'device-confirm-card'
+  const actionLabel = action + (params ? `:${params}` : '')
+  card.innerHTML = `
+    <div class="device-confirm-icon">🔐</div>
+    <div class="device-confirm-content">
+      <div class="device-confirm-title">${t('device.confirm.title')}</div>
+      <div class="device-confirm-action">${escapeText(actionLabel)}</div>
+    </div>
+    <div class="device-confirm-btns">
+      <button class="device-confirm-btn device-confirm-btn--allow">${t('device.confirm.btn')}</button>
+      <button class="device-confirm-btn device-confirm-btn--deny">${t('device.confirm.cancel')}</button>
+    </div>`
+  wrap.appendChild(card)
+  _messagesEl.insertBefore(wrap, _typingEl)
+  scrollToBottom()
+
+  card.querySelector('.device-confirm-btn--allow').onclick = async () => {
+    const btnsEl = card.querySelector('.device-confirm-btns')
+    btnsEl.innerHTML = '<span class="device-confirm-pending">…</span>'
+    try {
+      const result = await executeDeviceAction(action, params)
+      btnsEl.innerHTML = `<span class="device-confirm-result">${escapeText(result)}</span>`
+    } catch (err) {
+      console.warn('[device] sensitive action failed:', action, err)
+      btnsEl.innerHTML = `<span class="device-confirm-result device-confirm-result--err">${escapeText(t('device.error.not_supported'))}</span>`
+    }
+  }
+  card.querySelector('.device-confirm-btn--deny').onclick = () => wrap.remove()
+}
+
+
 function processMessageQueue() {
   if (_messageQueue.length === 0) return
   if (_isSending || _isStreaming) return
@@ -458,6 +541,18 @@ function handleChatEvent(payload) {
     // 忽略空 final（Gateway 会为一条消息触发多个 run，部分是空 final）
     if (!_currentAiBubble && !finalText && !finalImages.length) return
     showTyping(false)
+
+    // 在显示前从原始文本中提取设备动作标记
+    if (getDeviceCtlEnabled()) {
+      const rawText = extractRawTextContent(payload.message)
+      if (rawText) {
+        const { actions, confirms } = parseDeviceMarkers(rawText)
+        if (actions.length || confirms.length) {
+          setTimeout(() => _processDeviceActions(actions, confirms), 100)
+        }
+      }
+    }
+
     // 如果流式阶段没有创建 bubble，从 final message 中提取
     if (!_currentAiBubble && (finalText || finalImages.length)) {
       _currentAiBubble = createAiBubble()

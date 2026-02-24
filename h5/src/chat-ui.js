@@ -9,6 +9,7 @@ import { addTtsButton, getTtsAuto } from './tts.js'
 import { initBroadcastCenter, handlePushEvent, showBroadcastCenter, resetUnread } from './broadcast-center.js'
 import { initVoiceInput, isSpeechSupported, getVoiceAutoSend } from './voice-input.js'
 import { initNativeMode, isNative } from './native-mode.js'
+import { buildMemoryContext, showMemoryPanel } from './memory.js'
 
 const STORAGE_SESSION_KEY = 'clawapp-session-key'
 
@@ -39,6 +40,7 @@ const SVG_SETTINGS = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none
 const SVG_STOP = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`
 const SVG_BELL = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>`
 const SVG_MIC = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`
+const SVG_MEMORY = `<svg width="18" height="18" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M27.2 10.6a5 5 0 00-7.2-4.5A6 6 0 008 11a4 4 0 00.7 7.9 4 4 0 003.3 6A5 5 0 0018 28a5 5 0 006-4.9 4 4 0 003-6.4 4 4 0 00.2-6z"/><line x1="18" y1="13" x2="18" y2="22"/><line x1="14" y1="17" x2="22" y2="17"/></svg>`
 
 /** 从 OpenClaw 消息中提取可渲染内容（文本 + 图片） */
 function extractContent(message) {
@@ -78,6 +80,7 @@ export function createChatPage() {
       <div class="status-dot" id="status-dot"></div>
       <div class="title" id="session-title">ClawApp</div>
       <button class="settings-btn" id="broadcast-btn" title="${t('broadcast.title')}">${SVG_BELL}<span class="broadcast-badge" id="broadcast-badge" hidden></span></button>
+      <button class="settings-btn" id="memory-btn" title="${t('memory.title')}">${SVG_MEMORY}</button>
       <button class="settings-btn" id="settings-btn">${SVG_SETTINGS}</button>
     </div>
     <div class="chat-messages" id="chat-messages">
@@ -137,6 +140,7 @@ export function initChatUI(onSettings) {
   })
 
   document.getElementById('broadcast-btn').onclick = () => showBroadcastCenter()
+  document.getElementById('memory-btn').onclick = () => showMemoryPanel()
   document.getElementById('settings-btn').onclick = () => showSettings()
   document.getElementById('session-title').onclick = () => showSessionPicker()
   document.getElementById('cmd-btn').onclick = () => showCommands()
@@ -268,8 +272,12 @@ async function doSend(text, attachments) {
   _isSending = true
   _textarea.disabled = true
 
+  // 注入长期记忆上下文（对 AI 可见，用户气泡只显示原始消息）
+  const memCtx = buildMemoryContext()
+  const textToSend = memCtx ? memCtx + text : text
+
   try {
-    await wsClient.chatSend(_sessionKey, text, attachments.length ? attachments : undefined)
+    await wsClient.chatSend(_sessionKey, textToSend, attachments.length ? attachments : undefined)
   } catch (err) {
     showTyping(false)
     if (err.message.includes('未连接') || err.message.includes('超时') || err.message.includes('重连') || err.message.includes('timeout') || err.message.includes('reconnect')) {

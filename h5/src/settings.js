@@ -8,6 +8,7 @@ import { getTtsAuto, setTtsAuto } from './tts.js'
 import { renderDndSection } from './broadcast-center.js'
 import { isSpeechSupported, getVoiceAutoSend, setVoiceAutoSend } from './voice-input.js'
 import { isNative, getNativeSettings, setNativeSettings, applyNativeSettings } from './native-mode.js'
+import { getMemoryEnabled, setMemoryEnabled } from './memory.js'
 
 let _onDisconnect = null
 
@@ -76,6 +77,19 @@ export function showSettings() {
 
       <div class="settings-section">
         <div id="dnd-section"></div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-label">🧠 ${t('memory.settings.label')}</div>
+        <div class="settings-toggle-group" id="memory-toggle">
+          <button class="settings-toggle ${getMemoryEnabled() ? '' : 'active'}" data-value="off">
+            ${t('memory.settings.off')}
+          </button>
+          <button class="settings-toggle ${getMemoryEnabled() ? 'active' : ''}" data-value="on">
+            ${t('memory.settings.on')}
+          </button>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.5">${t('memory.settings.hint')}</div>
       </div>
 
       ${isSpeechSupported() ? `
@@ -168,6 +182,16 @@ export function showSettings() {
 
   // DND 免打扰设置
   renderDndSection(panel.querySelector('#dnd-section'))
+
+  // 长期记忆开关
+  panel.querySelectorAll('#memory-toggle .settings-toggle').forEach(btn => {
+    btn.onclick = () => {
+      const value = btn.dataset.value === 'on'
+      setMemoryEnabled(value)
+      panel.querySelectorAll('#memory-toggle .settings-toggle').forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+    }
+  })
 
   // 语音自动发送
   if (isSpeechSupported()) {

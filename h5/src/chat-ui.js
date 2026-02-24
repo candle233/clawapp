@@ -11,6 +11,7 @@ import { initVoiceInput, isSpeechSupported, getVoiceAutoSend } from './voice-inp
 import { initNativeMode, isNative } from './native-mode.js'
 import { buildMemoryContext, showMemoryPanel } from './memory.js'
 import { wrapTaskMessage, createStepTracker, updateStepTracker } from './task-planner.js'
+import { trackMessage, buildPersonaContext } from './persona.js'
 
 const STORAGE_SESSION_KEY = 'clawapp-session-key'
 
@@ -296,8 +297,15 @@ async function doSend(text, attachments, rawSend) {
   _textarea.disabled = true
 
   // 注入长期记忆上下文（对 AI 可见，用户气泡只显示原始消息）
-  const memCtx = buildMemoryContext()
-  const textToSend = rawSend || (memCtx ? memCtx + text : text)
+  const memCtx     = buildMemoryContext()
+  const personaCtx = buildPersonaContext()
+  const prefix     = [personaCtx, memCtx].filter(Boolean).join('')
+  const textToSend = rawSend || (prefix ? prefix + text : text)
+
+  // 追踪话题频次:
+  // - 跳过 rawSend 模式（任务规划消息已包装，不应重复计数原始话题）
+  // - 跳过空文本（无话题可检测）
+  if (!rawSend && text) trackMessage(text)
 
   try {
     await wsClient.chatSend(_sessionKey, textToSend, attachments.length ? attachments : undefined)

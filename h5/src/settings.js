@@ -9,6 +9,7 @@ import { renderDndSection } from './broadcast-center.js'
 import { isSpeechSupported, getVoiceAutoSend, setVoiceAutoSend } from './voice-input.js'
 import { isNative, getNativeSettings, setNativeSettings, applyNativeSettings } from './native-mode.js'
 import { getMemoryEnabled, setMemoryEnabled } from './memory.js'
+import { getPersonaEnabled, setPersonaEnabled } from './persona.js'
 
 let _onDisconnect = null
 
@@ -90,6 +91,19 @@ export function showSettings() {
           </button>
         </div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.5">${t('memory.settings.hint')}</div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-label">✨ ${t('persona.settings.label')}</div>
+        <div class="settings-toggle-group" id="persona-toggle">
+          <button class="settings-toggle ${getPersonaEnabled() ? '' : 'active'}" data-value="off">
+            ${t('persona.settings.off')}
+          </button>
+          <button class="settings-toggle ${getPersonaEnabled() ? 'active' : ''}" data-value="on">
+            ${t('persona.settings.on')}
+          </button>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.5">${t('persona.settings.hint')}</div>
       </div>
 
       ${isSpeechSupported() ? `
@@ -189,6 +203,16 @@ export function showSettings() {
       const value = btn.dataset.value === 'on'
       setMemoryEnabled(value)
       panel.querySelectorAll('#memory-toggle .settings-toggle').forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+    }
+  })
+
+  // 个性化推荐开关
+  panel.querySelectorAll('#persona-toggle .settings-toggle').forEach(btn => {
+    btn.onclick = () => {
+      const value = btn.dataset.value === 'on'
+      setPersonaEnabled(value)
+      panel.querySelectorAll('#persona-toggle .settings-toggle').forEach(b => b.classList.remove('active'))
       btn.classList.add('active')
     }
   })
